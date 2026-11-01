@@ -1,10 +1,13 @@
 import {createScheduleApi} from '../../lib/schedule-api';
 import {buildPublishedPdf} from '../../lib/published-pdf';
 import {loadSnapshot,saveSnapshot} from '../server/store';
-import {getGoogleUser,googleStart,googleCallback,logout,siteOrigin} from '../server/auth';
+import {getAuthenticatedUser,googleStart,googleCallback,logout,siteOrigin} from '../server/auth';
 import {validateBackup} from '../../lib/backup-schema';
+import {emailConfigured,handleEmailAuth} from '../server/email-auth';
 const json=(v:unknown,status=200)=>Response.json(v,{status,headers:{'Cache-Control':'no-store'}});
-export default async function handler(request:Request){try{const path=new URL(request.url).pathname;const user=()=>getGoogleUser(request);const api=createScheduleApi({load:loadSnapshot,save:saveSnapshot,getUser:user,adminEmail:()=>process.env.ADMIN_EMAIL});
+export default async function handler(request:Request,context?:{ip?:string}){try{const path=new URL(request.url).pathname;const user=()=>getAuthenticatedUser(request);const api=createScheduleApi({load:loadSnapshot,save:saveSnapshot,getUser:user,adminEmail:()=>process.env.ADMIN_EMAIL});
+ if(path==='/api/auth/methods'&&request.method==='GET')return json({email:emailConfigured()});
+ if(['/auth/email/request','/auth/email/verify'].includes(path)&&request.method==='POST')return await handleEmailAuth(request,context?.ip||'unknown');
  if(path==='/auth/google/start'&&request.method==='GET')return await googleStart(request);
  if(path==='/auth/google/callback'&&request.method==='GET')return await googleCallback(request);
  if(path==='/auth/logout'&&request.method==='GET')return logout();
@@ -12,7 +15,7 @@ export default async function handler(request:Request){try{const path=new URL(re
  if(path==='/api/schedule'&&request.method==='POST')return await api.POST(request);
  if(path==='/api/admin/backup'&&request.method==='GET')return await api.BACKUP();
  if(path==='/api/admin/import'&&request.method==='POST'){
-  const identity=await user();if(!identity||identity.email.toLowerCase()!==process.env.ADMIN_EMAIL?.toLowerCase())return json({error:'Admin access required.'},403);
+  const identity=await user();if(!identity||identity.email.trim().toLowerCase()!==process.env.ADMIN_EMAIL?.trim().toLowerCase())return json({error:'Admin access required.'},403);
   if(request.headers.get('origin')!==siteOrigin())return json({error:'Invalid request origin.'},403);
   const text=await request.text();if(text.length>2_000_000)return json({error:'Backup is too large.'},413);const backup=validateBackup(JSON.parse(text));
   const snapshot=await loadSnapshot();if(snapshot.revision!==0)return json({error:'Import is allowed only before the new deployment has been edited.'},409);
@@ -26,4 +29,4 @@ export default async function handler(request:Request){try{const path=new URL(re
  }
  return json({error:'Not found.'},404);
  }catch{return json({error:'The service is unavailable. Please contact the administrator.'},503)}}
-export const config={path:['/api/schedule','/api/schedule/pdf','/api/admin/backup','/api/admin/import','/auth/google/start','/auth/google/callback','/auth/logout']};
+export const config={path:['/api/auth/methods','/auth/email/request','/auth/email/verify','/api/schedule','/api/schedule/pdf','/api/admin/backup','/api/admin/import','/auth/google/start','/auth/google/callback','/auth/logout']};

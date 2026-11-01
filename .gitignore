@@ -1,0 +1,8 @@
+node_modules/
+netlify-dist/
+netlify-functions/
+.auth-test-*/
+.qa-*/
+.env
+.env.*
+!.env.example
