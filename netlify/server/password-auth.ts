@@ -1,6 +1,6 @@
 import {createHmac,randomBytes,randomUUID,scrypt as derive,timingSafeEqual} from 'node:crypto';
 import {cookies,cookie,getAuthenticatedUser,sessionCookie,signPayload,verifyPayload,siteOrigin} from './auth';
-import {passwordStore,type PasswordStore,type PasswordAccount,type Registry,type AccountTarget} from './password-store';
+import {passwordStore,type PasswordStore,type PasswordAccount,type Registry,type AccountTarget,accountUsername,validateAccountNames} from './password-store';
 import {loadSnapshot} from './store';
 import type {AppUser} from '../../lib/schedule-api';
 import type {Workspace} from '../../lib/schedule';
@@ -34,7 +34,7 @@ export function createPasswordAuth(deps:{store:PasswordStore;getUser:(request:Re
   const data=await input(request);await limit('login-ip/'+digest(ip),20);await limit('login-global',100);
   if(typeof data.username!=='string'||data.username.length>64||typeof data.password!=='string'||data.password.length>128)throw denied();
   const username=normalize(data.username);await limit('login-user/'+digest(username),10);
-  const {accounts}=await registry();const account=accounts.find(a=>a.username===username);
+  const {accounts}=await registry();const state=await deps.workspace();const candidates=accounts.filter(a=>normalize(accountUsername(a,state))===username);const account=candidates.length===1?candidates[0]:undefined;
   const match=await matchesPassword(data.password,account?.hash||'scrypt$32768$8$3$00000000000000000000000000000000$'+'0'.repeat(64));
   if(!account||!match||account.disabled||!await targetExists(account.target))throw denied();
   // Re-read after expensive hashing so a concurrent reset cannot issue a stale session.
@@ -58,32 +58,34 @@ export function createPasswordAuth(deps:{store:PasswordStore;getUser:(request:Re
   const accounts=await edit(list=>list.map(a=>{if(a.id!==account.id)return a;if(a.version!==account.version||a.disabled)throw new LoginError('Your account changed. Please sign in again.',409);return {...a,hash,version,mustChange:false,updated:new Date(now()).toISOString()}}));
   const updated=accounts.find(a=>a.id===account.id)!;const headers=new Headers({'Content-Type':'application/json','Cache-Control':'no-store'});headers.append('Set-Cookie',await session(updated));headers.append('Set-Cookie',cookie(CHANGE,'',0));return new Response(JSON.stringify({ok:true,redirect:'/'}),{headers});
  }
- const safe=(a:PasswordAccount)=>({id:a.id,username:a.username,target:a.target,mustChange:a.mustChange,disabled:a.disabled,created:a.created,updated:a.updated});
+ const safe=(a:PasswordAccount,state:Workspace)=>({id:a.id,username:accountUsername(a,state),target:a.target,mustChange:a.mustChange,disabled:a.disabled,created:a.created,updated:a.updated});
  async function manage(request:Request){
   const user=await deps.getUser(request);if(!isAdmin(user))throw new LoginError('Admin access required.',403);
-  if(request.method==='GET')return json({accounts:(await registry()).accounts.map(safe),currentAccount:user?.localAccess?user.userId.slice('password:'.length):null});
+  const state=await deps.workspace();
+  if(request.method==='GET')return json({accounts:(await registry()).accounts.map(a=>safe(a,state)),currentAccount:user?.localAccess?user.userId.slice('password:'.length):null});
   const data=await input(request);const at=new Date(now()).toISOString();
   if(data.action==='create'){
-   if(typeof data.username!=='string'||! /^[a-z0-9][a-z0-9._-]{2,63}$/.test(normalize(data.username)))throw new LoginError('Use 3–64 letters, numbers, dots, underscores or hyphens for the username.');
    const target:AccountTarget=data.target?.kind==='admin'?{kind:'admin'}:{kind:'fellow',year:data.target?.year,fellow:data.target?.fellow};
    if(target.kind==='fellow'&&(!Number.isInteger(target.year)||typeof target.fellow!=='string'))throw new LoginError('Choose a fellow.');
    if(!await targetExists(target))throw new LoginError('The fellow no longer exists.',409);
-   const temporaryPassword=randomBytes(18).toString('base64url');const account:PasswordAccount={id:randomUUID(),username:normalize(data.username),target,hash:await hashPassword(temporaryPassword),version:randomUUID(),mustChange:true,disabled:false,created:at,updated:at};
-   await edit(list=>{if(list.some(a=>a.username===account.username))throw new LoginError('This username is already in use.',409);if(list.some(a=>a.target.kind===target.kind&&(target.kind==='admin'||a.target.kind==='fellow'&&a.target.year===target.year&&a.target.fellow===target.fellow)))throw new LoginError('An account already exists for this person. Reset it instead.',409);return [...list,account]});
-   return json({account:safe(account),temporaryPassword},201);
+   const username=target.kind==='admin'?data.username:state.years.find(y=>y.year===target.year)?.fellows.find(f=>f.id===target.fellow)?.staffId;
+   if(typeof username!=='string'||!(target.kind==='admin'?/^[a-z0-9][a-z0-9._-]{2,63}$/:/^[a-z0-9][a-z0-9._-]{0,63}$/).test(normalize(username)))throw new LoginError(target.kind==='admin'?'Use 3–64 letters, numbers, dots, underscores or hyphens for the username.':'Save a valid Staff ID No. in Edit fellow before creating the login.');
+   const temporaryPassword=randomBytes(18).toString('base64url');const account:PasswordAccount={id:randomUUID(),username:normalize(username),target,hash:await hashPassword(temporaryPassword),version:randomUUID(),mustChange:true,disabled:false,created:at,updated:at};
+   await edit(list=>{if(list.some(a=>normalize(accountUsername(a,state))===account.username))throw new LoginError('This username is already in use.',409);if(list.some(a=>a.target.kind===target.kind&&(target.kind==='admin'||a.target.kind==='fellow'&&a.target.year===target.year&&a.target.fellow===target.fellow)))throw new LoginError('An account already exists for this person. Reset it instead.',409);const next=[...list,account];try{validateAccountNames(next,state)}catch(e){throw new LoginError(e instanceof Error?e.message:'Username conflict.',409)}return next});
+   return json({account:safe(account,state),temporaryPassword},201);
   }
   if(!['reset','disable'].includes(data.action)||typeof data.id!=='string')throw new LoginError('Invalid account action.');
   if(user!.userId===`password:${data.id}`)throw new LoginError('Use Change password for your own account. Sign in with Google if you need to reset or disable it.');
   const temporaryPassword=data.action==='reset'?randomBytes(18).toString('base64url'):undefined;
   const hash=temporaryPassword?await hashPassword(temporaryPassword):undefined;
   const result=await edit(list=>{if(!list.some(a=>a.id===data.id))throw new LoginError('Account not found.',404);return list.map(a=>a.id!==data.id?a:{...a,hash:hash||a.hash,version:randomUUID(),disabled:data.action==='disable',mustChange:data.action==='reset'?true:a.mustChange,updated:at})});
-  return json({account:safe(result.find(a=>a.id===data.id)!),...(temporaryPassword?{temporaryPassword}:{})});
+  return json({account:safe(result.find(a=>a.id===data.id)!,state),...(temporaryPassword?{temporaryPassword}:{})});
  }
  return async(request:Request,ip:string)=>{try{const path=new URL(request.url).pathname;
   if(path==='/api/admin/accounts'&&['GET','POST'].includes(request.method))return await manage(request);
   if(path==='/auth/password/login'&&request.method==='POST')return await login(request,ip);
   if(path==='/auth/password/change'&&request.method==='POST')return await change(request,ip);
-  if(path==='/auth/password/status'&&request.method==='GET'){const {account,forced}=await changeIdentity(request);return json({username:account.username,mustChange:forced})}
+  if(path==='/auth/password/status'&&request.method==='GET'){const {account,forced}=await changeIdentity(request);return json({username:accountUsername(account,await deps.workspace()),mustChange:forced})}
   return json({error:'Not found.'},404);
  }catch(error){return error instanceof LoginError?json({error:error.message},error.status):json({error:'Account sign-in is temporarily unavailable. Please try again.'},503)}};
 }

@@ -1,4 +1,5 @@
 import {getStore} from '@netlify/blobs';
+import {fellowName,normalizeStaffId,type Workspace} from '../../lib/schedule';
 import {loadSnapshot} from './store';
 import type {AppUser} from '../../lib/schedule-api';
 export type AccountTarget={kind:'admin'}|{kind:'fellow';year:number;fellow:string};
@@ -19,7 +20,12 @@ export async function readPasswordSession(id:string,version:string,store:Passwor
  const state=await workspace();
  const fellow=state.years.find(y=>y.year===target.year)?.fellows.find(f=>f.id===target.fellow);
  if(!fellow)return null;
- return {userId:`password:${account.id}`,email:fellow.email||account.username,displayName:[fellow.first,fellow.last].filter(Boolean).join(' ')||fellow.nick||account.username,fullName:null,localAccess:{admin:false,memberships:[{year:target.year,id:target.fellow}]}};
+ return {userId:`password:${account.id}`,email:fellow.email||account.username,displayName:fellowName(fellow),fullName:null,localAccess:{admin:false,memberships:[{year:target.year,id:target.fellow}]}};
 }
 
 export function passwordSessionUser(id:string,version:string){return readPasswordSession(id,version,passwordStore(),async()=>(await loadSnapshot()).state)}
+
+// Fellow usernames are derived from the live roster, so Staff ID edits keep the same password.
+export function accountUsername(account:PasswordAccount,state:Workspace){const target=account.target;if(target.kind==='admin')return account.username;return state.years.find(y=>y.year===target.year)?.fellows.find(f=>f.id===target.fellow)?.staffId?.trim()||account.username}
+export async function validatePasswordUsernames(state:Workspace){const row=await passwordStore().read('accounts');const accounts:PasswordAccount[]=row?.data.accounts||[];validateAccountNames(accounts,state)}
+export function validateAccountNames(accounts:PasswordAccount[],state:Workspace){const names=new Map<string,string>();for(const account of accounts){const name=normalizeStaffId(accountUsername(account,state));if(names.has(name))throw Error('This Staff ID No. conflicts with an existing login username. Choose a unique ID.');names.set(name,account.id)}for(const y of state.years)for(const f of y.fellows)if(f.staffId){const owner=accounts.find(a=>a.target.kind==='fellow'&&a.target.year===y.year&&a.target.fellow===f.id);const reserved=names.get(normalizeStaffId(f.staffId));if(reserved&&reserved!==owner?.id)throw Error('This Staff ID No. conflicts with an existing login username. Choose a unique ID.')}}

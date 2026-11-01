@@ -1,4 +1,4 @@
-export type Fellow={id:string;first:string;last:string;nick:string;email:string;color:string;phone?:string;notes?:string};
+export type Fellow={id:string;first:string;last:string;nick:string;email:string;color:string;phone?:string;notes?:string;displayName?:string;staffId?:string};
 export type Slot={id:string;day:number;session:string;clinic:string;track:number};
 export type Rotation={start:string;end:string};
 export type Assignment={fellow:string;extra?:boolean};
@@ -35,3 +35,7 @@ export function makeYear(year:number,n=5,initialCohort=false):Year{const names=[
 export function seed():Workspace{return {years:[makeYear(2026,5,true)],leaves:[],notices:[],audit:[]}}
 export function assignment(y:Year,p:Plan,date:string,slot:Slot):Assignment|null{if(date<`${y.year}-07-01`||date>`${y.year+1}-06-30`||weekday(date)!==slot.day)return null;const override=p.overrides[`${date}|${slot.id}`];if(p.holidays.includes(date)&&slot.session!=='RAVC')return null;let r=p.rotations.findIndex(r=>date>=r.start&&date<=r.end);if(r<0&&slot.session!=='RAVC')return null;if(override)return override;r=Math.max(r,0);const order=[0,...Array.from({length:y.fellows.length-1},(_,i)=>y.fellows.length-1-i)];return {fellow:y.fellows[(order[slot.track%order.length]+r)%y.fellows.length].id}}
 export function totals(y:Year,p:Plan){const result=Object.fromEntries(y.fellows.map(f=>[f.id,{clinic:0,ravc:0,extra:0,overlap:0}]));for(const d of dates(`${y.year}-07-01`,`${y.year+1}-06-30`)){const session:Record<string,number>={};for(const s of p.slots){const a=assignment(y,p,d,s);if(!a||!result[a.fellow])continue;result[a.fellow][s.session==='RAVC'?'ravc':'clinic']++;if(a.extra)result[a.fellow].extra++;if(s.session!=='RAVC'){const k=a.fellow+s.session;session[k]=(session[k]||0)+1}}for(const f of y.fellows)for(const time of ['AM','PM'])if(session[f.id+time]>1)result[f.id].overlap++}return result}
+
+export function fellowName(f?:Pick<Fellow,'displayName'|'nick'|'first'|'last'>){return f?.displayName?.trim()||f?.nick?.trim()||[f?.first,f?.last].filter(Boolean).join(' ')||'Unassigned'}
+export const normalizeStaffId=(value:string)=>value.trim().toLowerCase();
+export const validStaffId=(value:string)=>/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/.test(value);

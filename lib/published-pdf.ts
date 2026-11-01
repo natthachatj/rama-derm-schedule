@@ -1,7 +1,7 @@
 import {PDFDocument,rgb,PageSizes,type PDFPage,type PDFFont} from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import {sarabunBase64} from './pdf-font';
-import {add,dates,weekday,assignment,type Year,type Slot,type Plan} from './schedule';
+import {add,fellowName,dates,weekday,assignment,type Year,type Slot,type Plan} from './schedule';
 export type ExportYear=Pick<Year,'year'|'fellows'|'published'|'publishedAt'>;
 const dayNames=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const shortDate=(d:string)=>new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short'});
@@ -14,10 +14,10 @@ export function publishedModel(year:ExportYear){
  const rows=[1,2,3,4,5,6,0].flatMap(day=>{const am=p.slots.filter(s=>s.day===day&&s.session==='AM');const pm=p.slots.filter(s=>s.day===day&&s.session==='PM');const ravc=p.slots.filter(s=>s.day===day&&s.session==='RAVC');am.push(...ravc);pm.push(...ravc);return Array.from({length:Math.max(am.length,pm.length)},(_,i)=>({day:dayNames[day],first:i===0,am:am[i]?{clinic:am[i].clinic,cells:baseCells(am[i])}:null,pm:pm[i]?{clinic:pm[i].clinic,cells:baseCells(pm[i])}:null}))});
  const exceptions:{date:string;session:string;clinic:string;assigned:string}[]=[];
  for(const d of [...new Set(p.holidays)].sort())if(d>=`${year.year}-07-01`&&d<=`${year.year+1}-06-30`)exceptions.push({date:d,session:'AM / PM',clinic:'All regular clinics closed for holiday',assigned:'RAVC continues as scheduled'});
- for(const [key] of Object.entries(p.overrides).sort(([a],[b])=>a.localeCompare(b))){const [d,id]=key.split('|');const s=p.slots.find(s=>s.id===id);if(!s||weekday(d)!==s.day||d<`${year.year}-07-01`||d>`${year.year+1}-06-30`)continue;const actual=assignment(y,p,d,s);exceptions.push({date:d,session:s.session,clinic:s.clinic,assigned:actual?`${fellowNumber(actual.fellow)} - ${year.fellows.find(f=>f.id===actual.fellow)?.nick||''}`:'Closed for holiday'})}
- for(const d of dates(`${year.year}-07-01`,add(p.rotations[0].start,-1)))for(const s of p.slots.filter(s=>s.session==='RAVC'&&s.day===weekday(d))){const actual=assignment(y,p,d,s);if(actual)exceptions.push({date:d,session:'RAVC',clinic:'Opening-weekend coverage before rotation 1',assigned:`${fellowNumber(actual.fellow)} - ${year.fellows.find(f=>f.id===actual.fellow)?.nick||''}`})}
+ for(const [key] of Object.entries(p.overrides).sort(([a],[b])=>a.localeCompare(b))){const [d,id]=key.split('|');const s=p.slots.find(s=>s.id===id);if(!s||weekday(d)!==s.day||d<`${year.year}-07-01`||d>`${year.year+1}-06-30`)continue;const actual=assignment(y,p,d,s);exceptions.push({date:d,session:s.session,clinic:s.clinic,assigned:actual?`${fellowNumber(actual.fellow)} - ${fellowName(year.fellows.find(f=>f.id===actual.fellow))}`:'Closed for holiday'})}
+ for(const d of dates(`${year.year}-07-01`,add(p.rotations[0].start,-1)))for(const s of p.slots.filter(s=>s.session==='RAVC'&&s.day===weekday(d))){const actual=assignment(y,p,d,s);if(actual)exceptions.push({date:d,session:'RAVC',clinic:'Opening-weekend coverage before rotation 1',assigned:`${fellowNumber(actual.fellow)} - ${fellowName(year.fellows.find(f=>f.id===actual.fellow))}`})}
  exceptions.sort((a,b)=>a.date.localeCompare(b.date)||a.session.localeCompare(b.session));
- return {rows,exceptions,rotations:p.rotations,year:year.year,publishedAt:year.publishedAt,legend:year.fellows.map((f,i)=>`${i+1} = ${f.first} ${f.last} (${f.nick})`)};
+ return {rows,exceptions,rotations:p.rotations,year:year.year,publishedAt:year.publishedAt,legend:year.fellows.map((f,i)=>`${i+1} = ${fellowName(f)}`)};
 }
 export async function buildPublishedPdf(year:ExportYear){
  const model=publishedModel(year);const doc=await PDFDocument.create();doc.setTitle(`RAMA Derm - Published Schedule ${year.year}-${year.year+1}`);doc.setAuthor('RAMA Derm');doc.registerFontkit(fontkit);

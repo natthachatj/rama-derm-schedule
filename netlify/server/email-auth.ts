@@ -1,6 +1,7 @@
 import {createHmac, randomInt, randomUUID, timingSafeEqual} from 'node:crypto';
 import {getStore} from '@netlify/blobs';
 import {cookies, cookie, signPayload, verifyPayload, sessionCookie, siteOrigin} from './auth';
+import {fellowName} from '../../lib/schedule';
 import {loadSnapshot} from './store';
 
 const TRANSACTION='__Host-rama_email_otp';
@@ -19,7 +20,7 @@ export async function registeredIdentity(email:string){
  if(normalize(process.env.ADMIN_EMAIL||'')===email)return {email,name:email};
  const {state}=await loadSnapshot();
  const fellow=state.years.flatMap(y=>y.fellows).find(f=>normalize(f.email||'')===email);
- return fellow?{email,name:[fellow.first,fellow.last].filter(Boolean).join(' ')||fellow.nick||email}:null;
+ return fellow?{email,name:fellowName(fellow)}:null;
 }
 export async function sendCode(email:string,code:string,id:string){
  const result=await fetch('https://api.resend.com/emails',{method:'POST',signal:AbortSignal.timeout(15000),headers:{Authorization:`Bearer ${process.env.RESEND_API_KEY}`,'Content-Type':'application/json','Idempotency-Key':`signin/${id}`},body:JSON.stringify({from:process.env.EMAIL_FROM,to:[email],subject:'Your RAMA Derm sign-in code',text:`Your RAMA Derm sign-in code is: ${code}\n\nThis code expires in 10 minutes and can only be used once in the browser where you requested it.\n\nIf you did not request this code, you can ignore this email.\n${siteOrigin()}`})});

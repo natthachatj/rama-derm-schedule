@@ -3,10 +3,11 @@ import {buildPublishedPdf} from '../../lib/published-pdf';
 import {loadSnapshot,saveSnapshot} from '../server/store';
 import {getAuthenticatedUser,googleStart,googleCallback,logout,siteOrigin} from '../server/auth';
 import {validateBackup} from '../../lib/backup-schema';
+import {validatePasswordUsernames} from '../server/password-store';
 import {handlePasswordAuth} from '../server/password-auth';
 import {emailConfigured,handleEmailAuth} from '../server/email-auth';
 const json=(v:unknown,status=200)=>Response.json(v,{status,headers:{'Cache-Control':'no-store'}});
-export default async function handler(request:Request,context?:{ip?:string}){try{const path=new URL(request.url).pathname;const user=()=>getAuthenticatedUser(request);const api=createScheduleApi({load:loadSnapshot,save:saveSnapshot,getUser:user,adminEmail:()=>process.env.ADMIN_EMAIL});
+export default async function handler(request:Request,context?:{ip?:string}){try{const path=new URL(request.url).pathname;const user=()=>getAuthenticatedUser(request);const api=createScheduleApi({load:loadSnapshot,save:saveSnapshot,getUser:user,adminEmail:()=>process.env.ADMIN_EMAIL,validateFellows:validatePasswordUsernames});
  if(path.startsWith('/auth/password/')||path==='/api/admin/accounts')return await handlePasswordAuth(request,context?.ip||'unknown');
  if(path==='/api/auth/methods'&&request.method==='GET')return json({email:emailConfigured(),password:true});
  if(['/auth/email/request','/auth/email/verify'].includes(path)&&request.method==='POST')return await handleEmailAuth(request,context?.ip||'unknown');
@@ -27,7 +28,7 @@ export default async function handler(request:Request,context?:{ip?:string}){try
  if(path==='/api/schedule/pdf'&&request.method==='GET'){
   const year=Number(new URL(request.url).searchParams.get('year'));if(!Number.isInteger(year)||year<2020||year>2100)return json({error:'Select a valid academic year.'},400);
   const {state}=await loadSnapshot();const y=state.years.find(y=>y.year===year);if(!y?.published)return json({error:'Publish this academic year before exporting.'},404);
-  const safe={year:y.year,published:y.published,publishedAt:y.publishedAt,fellows:y.fellows.map(f=>({id:f.id,first:f.first,last:f.last,nick:f.nick,color:f.color,email:''}))};const bytes=await buildPublishedPdf(safe);return new Response(bytes as BodyInit,{headers:{'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="RAMA-Derm-Published-Schedule-${year}-${year+1}.pdf"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+  const safe={year:y.year,published:y.published,publishedAt:y.publishedAt,fellows:y.fellows.map(f=>({id:f.id,first:f.first,last:f.last,nick:f.nick,displayName:f.displayName,color:f.color,email:''}))};const bytes=await buildPublishedPdf(safe);return new Response(bytes as BodyInit,{headers:{'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="RAMA-Derm-Published-Schedule-${year}-${year+1}.pdf"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
  }
  return json({error:'Not found.'},404);
  }catch{return json({error:'The service is unavailable. Please contact the administrator.'},503)}}
