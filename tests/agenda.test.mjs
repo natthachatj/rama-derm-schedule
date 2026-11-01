@@ -1,0 +1,18 @@
+import {test,after} from 'node:test';
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {pathToFileURL} from 'node:url';
+import React from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+const dir=await mkdtemp(new URL('../.auth-test-',import.meta.url));
+await build({entryPoints:['app/agenda-sections.tsx','app/calendar-month.tsx','lib/schedule.ts'],outdir:dir,outbase:'.',bundle:true,platform:'node',target:'node22',format:'esm',packages:'external',jsx:'automatic'});
+const {default:Agenda}=await import(pathToFileURL(`${dir}/app/agenda-sections.js`));
+const {default:Month}=await import(pathToFileURL(`${dir}/app/calendar-month.js`));
+const {seed}=await import(pathToFileURL(`${dir}/lib/schedule.js`));
+after(()=>rm(dir,{recursive:true,force:true}));
+const entries=['PM','RAVC','AM'].map((session,i)=>({s:{id:session,day:3,session,clinic:session+' clinic',track:i},a:{fellow:'f1'}}));
+const render=(date,s)=>React.createElement('button',{key:s.id},s.clinic);
+test('agenda groups mixed entries into morning, afternoon, and RAVC in that order',()=>{for(const compact of [false,true]){const html=renderToStaticMarkup(React.createElement(Agenda,{date:'2026-07-01',entries,renderAssignment:render,compact}));assert.ok(html.indexOf('AM clinic')<html.indexOf('PM clinic'));assert.ok(html.indexOf('PM clinic')<html.indexOf('RAVC clinic'));assert.match(html,/Morning assignments/);assert.match(html,/Afternoon assignments/);assert.match(html,/RAVC on-call assignments/)} });
+test('empty and filtered sessions retain their headings with meaningful empty states',()=>{const html=renderToStaticMarkup(React.createElement(Agenda,{date:'2026-07-01',entries:[],renderAssignment:render,holiday:true,filtered:true}));assert.match(html,/Morning/);assert.match(html,/Afternoon/);assert.match(html,/Clinics closed for the holiday/);assert.match(html,/No assignments match your filters/)});
+test('monthly selected-day agenda uses the same groups and offers an agenda dialog button',()=>{const year=seed().years[0];const html=renderToStaticMarkup(React.createElement(Month,{year,plan:year.draft,date:'2026-07-01',today:'2026-07-01',entries:()=>entries,onSelect:()=>{},renderAssignment:render,filtered:false,onOpenAgenda:()=>{}}));assert.match(html,/Open day agenda/);assert.match(html,/Morning assignments/);assert.match(html,/Afternoon assignments/)});
