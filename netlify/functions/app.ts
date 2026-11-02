@@ -20,7 +20,7 @@ export default async function handler(request:Request,context?:{ip?:string}){try
  if(path==='/api/admin/import'&&request.method==='POST'){
   const identity=await user();if(!identity||!(identity.localAccess?identity.localAccess.admin:identity.email.trim().toLowerCase()===process.env.ADMIN_EMAIL?.trim().toLowerCase()))return json({error:'Admin access required.'},403);
   if(request.headers.get('origin')!==siteOrigin())return json({error:'Invalid request origin.'},403);
-  const text=await request.text();if(text.length>2_000_000)return json({error:'Backup is too large.'},413);const backup=validateBackup(JSON.parse(text));
+  const text=await request.text();if(text.length>20_000_000)return json({error:'Backup is too large.'},413);const backup=validateBackup(JSON.parse(text));
   const snapshot=await loadSnapshot();if(snapshot.revision!==0)return json({error:'Import is allowed only before the new deployment has been edited.'},409);
   if(!await saveSnapshot(backup.state,snapshot.revision,snapshot.token))return json({error:'The data changed. Retry import.'},409);
   return json({imported:true,academicYears:backup.state.years.map(y=>y.year)});
