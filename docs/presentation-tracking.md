@@ -14,8 +14,8 @@ Journal club requires no instructor signature. After presenting, the assigned fe
 
 ## Fellow and instructor workflow (other categories)
 
-1. Open My presentations (or the calendar activity), choose the relevant occurrence, and save presentation details. Optional evidence is a full HTTP(S) slides link, submission notes, or a PDF attachment of at most 512 KB.
-2. On or after the presentation date, choose Instructor sign-off and give the device to the instructor. The instructor enters/selects their name, chooses Satisfactory or Revision needed, adds optional feedback, draws their signature and confirms that they observed the presentation.
+1. Open My presentations (or the calendar activity), choose the relevant occurrence, and save presentation details. Optional evidence is a full HTTP(S) slides link, or submission notes. The PDF upload field has been removed; previously saved attachments remain accessible in their private records.
+2. On or after the presentation date, choose Save & continue to instructor sign-off. Saving the submission opens the instructor form immediately; give the device to the instructor. For a future date, Save presentation details prepares the record and the form explains the date when signing becomes available. The instructor enters/selects their name, chooses Satisfactory or Revision needed, adds optional feedback, draws their signature and confirms that they observed the presentation.
 3. Satisfactory submissions enter Awaiting admin approval. Revision needed returns the record to the fellow. This is acknowledgment through the fellow's session, not independent authentication of the instructor's identity.
 4. Only admin can approve completion. A shared activity is marked Completed when all assigned presenters/co-presenters are approved. One person's approval does not grant credit to another.
 
