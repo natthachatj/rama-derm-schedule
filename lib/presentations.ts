@@ -14,7 +14,7 @@ export type Signoff=z.infer<typeof signoffSchema>;
 export type Evidence=z.infer<typeof evidenceSchema>;
 export type Signature=z.infer<typeof signatureSchema>;
 export type PresentationSnapshot=z.infer<typeof snapshotSchema>;
-const counts=z.object({'Topic review':z.number().int().min(0).max(500),'Journal club':z.number().int().min(0).max(500),Workshop:z.number().int().min(0).max(500),Meeting:z.number().int().min(0).max(500)});
+const counts=z.object({'Topic review':z.number().int().min(0).max(500),'Journal club':z.number().int().min(0).max(500),Workshop:z.number().int().min(0).max(500),Meeting:z.number().int().min(0).max(500),Lecture:z.number().int().min(0).max(500).default(0)});
 export const presentationTargetsSchema=z.object({year:z.number().int(),defaults:counts,overrides:z.record(counts),version:z.number().int().nonnegative()});
 export type PresentationTargets=z.infer<typeof presentationTargetsSchema>;
 export const presentationToday=()=>new Date(Date.now()+7*3600000).toISOString().slice(0,10);

@@ -8,9 +8,9 @@ Edit an activity and assign Presenter, Co-presenter or Attendee for each fellow.
 
 Only admin sees Presentation progress, its overview shortcut, yearly counters, fellow comparison, July–June timeline, filtered CSV export and approval queue. Fellows see My presentations, containing only their own submissions and approval history. They can also access their own record from the activity detail. Public visitors and other fellows receive no signatures, feedback, submission evidence or history in API responses. Minimum requirements are not used.
 
-## Journal club, Meeting and Workshop: fellow confirmation and admin approval
+## Journal club, Meeting, Workshop and Lecture: fellow confirmation and admin approval
 
-Journal club, Meeting and Workshop require no instructor signature. After presenting, the assigned fellow opens their record, optionally adds slides/evidence, confirms they have finished, and selects **Mark finished & send for approval**. The submission goes directly to the admin queue; it earns no credit until admin approves it. Each co-presenter submits separately. Future dates cannot be marked finished. Returned or reopened records are corrected and submitted again without a signature. Changed presentation details invalidate the prior completion confirmation and approval while preserving them in history. Previously signed records in these categories remain reviewable and approvable.
+Journal club, Meeting, Workshop and Lecture require no instructor signature. After presenting, the assigned fellow opens their record, optionally adds slides/evidence, confirms they have finished, and selects **Mark finished & send for approval**. The submission goes directly to the admin queue; it earns no credit until admin approves it. Each co-presenter submits separately. Future dates cannot be marked finished. Returned or reopened records are corrected and submitted again without a signature. Changed presentation details invalidate the prior completion confirmation and approval while preserving them in history. Previously signed records in these categories remain reviewable and approvable.
 
 ## Topic review: fellow and instructor workflow
 
@@ -37,7 +37,7 @@ Signed/pending/approved evidence is locked. Changing topic, category, date, time
 
 Fellows have a new My learning progress page and an Overview shortcut. Only their own activity counts and private records are shown. Admin can choose any fellow on Presentation progress and compare counts across fellows. There are no minimum requirements, targets, remaining quotas or progress bars. The previous targets editor/API is retired; old target values remain readable only through legacy private backup compatibility and do not affect the app.
 
-Each category (Topic review, Journal club, Workshop, Meeting) has four expandable counts:
+Each category (Topic review, Journal club, Workshop, Meeting, Lecture) has four expandable counts:
 
 - Completed: the presenter has a currently valid admin approval.
 - Awaiting action: awaiting admin approval, returned for correction, or a past Topic review waiting for instructor sign-off.

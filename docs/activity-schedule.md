@@ -8,11 +8,11 @@ The four summary tiles and Training balance panel appear only in the private adm
 
 The Calendar page opens in Work schedule, with Activity schedule and Combined one tap away. Switching keeps the selected date and day/week/month/agenda mode. The academic-year matrix remains available for Work; switching from that matrix to Activities or Combined uses Month. Work also has an Agenda list. Activities and Combined provide Day, Week, Month and Agenda list, type/fellow/staff filters, and My schedule only. The clinic overlay can be toggled from Activity schedule.
 
-Clinic cards use fellow colors; activity cards use blue for Topic review, purple for Journal club, teal for Workshop and amber for Meeting, with text labels as well. The selected-date agenda separates clinic duties and activities into Morning and Afternoon; all-day activities are above them and RAVC is separate. An activity crossing noon appears once, with its full time range.
+Clinic cards use fellow colors; activity cards use blue for Topic review, purple for Journal club, teal for Workshop and amber for Meeting and rose for Lecture, with text labels as well. The selected-date agenda separates clinic duties and activities into Morning and Afternoon; all-day activities are above them and RAVC is separate. An activity crossing noon appears once, with its full time range.
 
 ## Create and edit activities
 
-Select New activity, or click an empty date/time. Choose the topic, type, date, start/end time or all-day, responsible fellows, supervising/covering staff, meeting format, visibility, description and status. At least one responsible fellow must belong to the selected academic year. Admin manages a staff directory; guests can also be typed. Onsite needs a location, Online needs a full HTTP(S) meeting link, and Hybrid needs both. Activities use Bangkok time (ICT / UTC+7). Timed activities start and end on the same day.
+Select New activity, or click an empty date/time. Choose the topic, type, date, start/end time or all-day, responsible fellows, supervising/covering staff, meeting format, visibility, description and status. At least one responsible fellow must belong to the selected academic year. Admin manages a staff directory; guests can also be typed. Onsite needs a location, Online and Hybrid meeting links are optional when scheduling and can be added later through Edit this occurrence. A supplied link must be a full HTTP(S) URL. Hybrid still needs an onsite location. Activities use Bangkok time (ICT / UTC+7). Timed activities start and end on the same day.
 
 Scheduled activities become visible immediately, with no approval step. Draft is an optional preparation status visible only to admin and the creator/responsible fellows. Completed and Cancelled are available as explicit statuses; Delete removes selected occurrences from calendar display while retaining their records for recovery.
 
@@ -24,7 +24,7 @@ Conflicts with responsible fellows, shared staff and clinic assignments are show
 
 ## Recurrence and deletion
 
-Repeat daily, weekly, or monthly with an interval and selected weekdays. Recurrence defaults to 30 June of the selected academic year and cannot extend beyond it. Monthly repetition uses the same day number and skips months lacking that day. Each occurrence is stored independently, with its original series position retained when it moves.
+Repeat daily, weekly, every other week, or monthly with an interval and selected weekdays. Recurrence defaults to 30 June of the selected academic year and cannot extend beyond it. Monthly repetition uses the same day number and skips months lacking that day. Every other week uses a weekly interval of two, retaining selected weekdays and the academic-year end limit. Each occurrence is stored independently, with its original series position retained when it moves.
 
 Delete offers:
 
