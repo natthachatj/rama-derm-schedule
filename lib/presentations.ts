@@ -1,6 +1,7 @@
 import {z} from 'zod';
 import {activityTypes,type Activity,type ActivityActor} from './activities';
 import type {Workspace,Year} from './schedule';
+export const requiresInstructorSignoff=(type:string)=>type==='Topic review';
 export const presentationStatuses=['awaiting_submission','awaiting_signature','pending','completed','returned'] as const;
 export const pointSchema=z.tuple([z.number().min(0).max(600),z.number().min(0).max(200)]);
 export const signatureSchema=z.array(z.array(pointSchema).min(2).max(1000)).min(1).max(80).refine(strokes=>strokes.reduce((n,s)=>n+s.length,0)<=4000,'Keep the signature to 4,000 points.').refine(strokes=>strokes.some(s=>s.some(p=>Math.abs(p[0]-s[0][0])+Math.abs(p[1]-s[0][1])>5)),'Draw the instructor signature before submitting.');
