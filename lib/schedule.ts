@@ -1,3 +1,4 @@
+import type {Presentation,PresentationTargets} from './presentations';
 import type {Activity,ActivityTemplate,ActivityStaff} from './activities';
 export type Fellow={id:string;first:string;last:string;nick:string;email:string;color:string;phone?:string;notes?:string;displayName?:string;staffId?:string};
 export type Slot={id:string;day:number;session:string;clinic:string;track:number};
@@ -7,7 +8,7 @@ export type Plan={rotations:Rotation[];slots:Slot[];overrides:Record<string,Assi
 export type Year={year:number;fellows:Fellow[];draft:Plan;published:Plan|null;publishedAt:string|null;dirty:boolean};
 export type Leave={id:string;year:number;requester:string;reason:string;items:{date:string;slot:string;replacement:string;before?:{published:Assignment|null;draft:Assignment|null;effective:Assignment;draftEffective?:Assignment|null}}[];status:string;created:string;decided?:string;cancelledAt?:string};
 export type Notice={id:string;fellow:string;year:number;text:string;read:boolean;created:string};
-export type Workspace={activities?:Activity[];activityTemplates?:ActivityTemplate[];activityStaff?:ActivityStaff[];years:Year[];leaves:Leave[];notices:Notice[];audit:{at:string;action:string}[]};
+export type Workspace={presentations?:Presentation[];presentationTargets?:PresentationTargets[];activities?:Activity[];activityTemplates?:ActivityTemplate[];activityStaff?:ActivityStaff[];years:Year[];leaves:Leave[];notices:Notice[];audit:{at:string;action:string}[]};
 export const colors=['#3766d8','#159f9b','#9255c9','#db8d38','#d05e83'];
 export function iso(d:Date){return d.toISOString().slice(0,10)}
 export function add(date:string,n:number){const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return iso(d)}

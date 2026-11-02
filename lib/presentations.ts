@@ -1,0 +1,25 @@
+import {z} from 'zod';
+import {activityTypes,type Activity,type ActivityActor} from './activities';
+import type {Workspace,Year} from './schedule';
+export const presentationStatuses=['awaiting_signature','pending','completed','returned'] as const;
+export const pointSchema=z.tuple([z.number().min(0).max(600),z.number().min(0).max(200)]);
+export const signatureSchema=z.array(z.array(pointSchema).min(2).max(1000)).min(1).max(80).refine(strokes=>strokes.reduce((n,s)=>n+s.length,0)<=4000,'Keep the signature to 4,000 points.').refine(strokes=>strokes.some(s=>s.some(p=>Math.abs(p[0]-s[0][0])+Math.abs(p[1]-s[0][1])>5)),'Draw the instructor signature before submitting.');
+export const evidenceSchema=z.object({link:z.string().trim().max(2000).refine(v=>!v||/^https?:\/\//i.test(v)&&(()=>{try{return !!new URL(v).hostname}catch{return false}})(),'Use a full HTTP(S) presentation link.'),notes:z.string().trim().max(4000),file:z.object({name:z.string().min(1).max(160),data:z.string().max(710000).regex(/^[A-Za-z0-9+/]+={0,2}$/),mime:z.literal('application/pdf')}).optional()});
+export const snapshotSchema=z.object({title:z.string(),type:z.enum(activityTypes),date:z.string(),start:z.string(),end:z.string(),allDay:z.boolean(),fellow:z.string(),role:z.enum(['presenter','co-presenter'])});
+export const signoffSchema=z.object({instructor:z.string().trim().min(2).max(120),assessment:z.enum(['Satisfactory','Revision needed']),feedback:z.string().trim().max(4000),strokes:signatureSchema,at:z.string()});
+export const presentationRecordSchema=z.object({id:z.string(),activityId:z.string(),year:z.number().int(),fellow:z.string(),version:z.number().int().positive(),status:z.enum(presentationStatuses),snapshot:snapshotSchema,evidence:evidenceSchema,signoff:signoffSchema.optional(),approvedAt:z.string().optional(),approvedBy:z.string().optional(),created:z.string(),updated:z.string(),history:z.array(z.object({at:z.string(),actor:z.string(),action:z.string(),reason:z.string(),snapshot:snapshotSchema,signoff:signoffSchema.optional(),evidence:evidenceSchema.optional(),approvedAt:z.string().optional(),approvedBy:z.string().optional()})).max(100)});
+export type Presentation=z.infer<typeof presentationRecordSchema>;
+export type Signoff=z.infer<typeof signoffSchema>;
+export type Evidence=z.infer<typeof evidenceSchema>;
+export type Signature=z.infer<typeof signatureSchema>;
+export type PresentationSnapshot=z.infer<typeof snapshotSchema>;
+const counts=z.object({'Topic review':z.number().int().min(0).max(500),'Journal club':z.number().int().min(0).max(500),Workshop:z.number().int().min(0).max(500),Meeting:z.number().int().min(0).max(500)});
+export const presentationTargetsSchema=z.object({year:z.number().int(),defaults:counts,overrides:z.record(counts),version:z.number().int().nonnegative()});
+export type PresentationTargets=z.infer<typeof presentationTargetsSchema>;
+export const zeroTargets=()=>Object.fromEntries(activityTypes.map(t=>[t,0])) as PresentationTargets['defaults'];
+export const presentationToday=()=>new Date(Date.now()+7*3600000).toISOString().slice(0,10);
+export function presentationRole(a:Activity,fellow:string){return a.presenters?.includes(fellow)?'presenter' as const:a.coPresenters?.includes(fellow)?'co-presenter' as const:undefined}
+export function presentationSnapshot(a:Activity,fellow:string):PresentationSnapshot{const role=presentationRole(a,fellow);if(!role)throw Error('Assign this fellow as presenter or co-presenter on the activity first.');return {title:a.title,type:a.type,date:a.date,start:a.start,end:a.end,allDay:a.allDay,fellow,role}}
+export function presentationPrivateView(state:Workspace,actor:ActivityActor){return {presentations:(state.presentations||[]).filter(p=>actor.admin||actor.memberships.some(m=>m.year===p.year&&m.id===p.fellow)),presentationTargets:actor.admin?state.presentationTargets||[]:[]}}
+export function presentationCredit(p:Presentation,activities:Activity[]){const a=activities.find(a=>a.id===p.activityId&&a.year===p.year);return p.status==='completed'&&!!a&&!a.deleted&&!['draft','cancelled'].includes(a.status)&&!!presentationRole(a,p.fellow)&&JSON.stringify(p.snapshot)===JSON.stringify(presentationSnapshot(a,p.fellow))}
+export function presentationTotals(year:Year,activities:Activity[],records:Presentation[],targets?:PresentationTargets){return year.fellows.map(f=>({fellow:f.id,categories:activityTypes.map(type=>{const own=records.filter(p=>p.year===year.year&&p.fellow===f.id&&p.snapshot.type===type);const approved=own.filter(p=>presentationCredit(p,activities)).length;const target=(targets?.overrides[f.id]||targets?.defaults||zeroTargets())[type];const scheduled=activities.filter(a=>a.year===year.year&&!a.deleted&&!['draft','cancelled'].includes(a.status)&&a.type===type&&!!presentationRole(a,f.id)&&!own.some(p=>p.activityId===a.id&&presentationCredit(p,activities))).length;return {type,approved,target,remaining:Math.max(0,target-approved),pending:own.filter(p=>p.status==='pending'&&activities.some(a=>a.id===p.activityId&&!a.deleted&&!['draft','cancelled'].includes(a.status))).length,scheduled}})}))}
