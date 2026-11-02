@@ -1,6 +1,6 @@
 import {z} from 'zod';
 import {activityTypes,type Activity,type ActivityActor} from './activities';
-import type {Workspace,Year} from './schedule';
+import type {Workspace} from './schedule';
 export const requiresInstructorSignoff=(type:string)=>type==='Topic review';
 export const presentationStatuses=['awaiting_submission','awaiting_signature','pending','completed','returned'] as const;
 export const pointSchema=z.tuple([z.number().min(0).max(600),z.number().min(0).max(200)]);
@@ -17,10 +17,8 @@ export type PresentationSnapshot=z.infer<typeof snapshotSchema>;
 const counts=z.object({'Topic review':z.number().int().min(0).max(500),'Journal club':z.number().int().min(0).max(500),Workshop:z.number().int().min(0).max(500),Meeting:z.number().int().min(0).max(500)});
 export const presentationTargetsSchema=z.object({year:z.number().int(),defaults:counts,overrides:z.record(counts),version:z.number().int().nonnegative()});
 export type PresentationTargets=z.infer<typeof presentationTargetsSchema>;
-export const zeroTargets=()=>Object.fromEntries(activityTypes.map(t=>[t,0])) as PresentationTargets['defaults'];
 export const presentationToday=()=>new Date(Date.now()+7*3600000).toISOString().slice(0,10);
 export function presentationRole(a:Activity,fellow:string){return a.presenters?.includes(fellow)?'presenter' as const:a.coPresenters?.includes(fellow)?'co-presenter' as const:undefined}
 export function presentationSnapshot(a:Activity,fellow:string):PresentationSnapshot{const role=presentationRole(a,fellow);if(!role)throw Error('Assign this fellow as presenter or co-presenter on the activity first.');return {title:a.title,type:a.type,date:a.date,start:a.start,end:a.end,allDay:a.allDay,fellow,role}}
-export function presentationPrivateView(state:Workspace,actor:ActivityActor){return {presentations:(state.presentations||[]).filter(p=>actor.admin||actor.memberships.some(m=>m.year===p.year&&m.id===p.fellow)),presentationTargets:actor.admin?state.presentationTargets||[]:[]}}
+export function presentationPrivateView(state:Workspace,actor:ActivityActor){return {presentations:(state.presentations||[]).filter(p=>actor.admin||actor.memberships.some(m=>m.year===p.year&&m.id===p.fellow)),presentationTargets:[]}}
 export function presentationCredit(p:Presentation,activities:Activity[]){const a=activities.find(a=>a.id===p.activityId&&a.year===p.year);return p.status==='completed'&&!!a&&!a.deleted&&!['draft','cancelled'].includes(a.status)&&!!presentationRole(a,p.fellow)&&JSON.stringify(p.snapshot)===JSON.stringify(presentationSnapshot(a,p.fellow))}
-export function presentationTotals(year:Year,activities:Activity[],records:Presentation[],targets?:PresentationTargets){return year.fellows.map(f=>({fellow:f.id,categories:activityTypes.map(type=>{const own=records.filter(p=>p.year===year.year&&p.fellow===f.id&&p.snapshot.type===type);const approved=own.filter(p=>presentationCredit(p,activities)).length;const target=(targets?.overrides[f.id]||targets?.defaults||zeroTargets())[type];const scheduled=activities.filter(a=>a.year===year.year&&!a.deleted&&!['draft','cancelled'].includes(a.status)&&a.type===type&&!!presentationRole(a,f.id)&&!own.some(p=>p.activityId===a.id&&presentationCredit(p,activities))).length;return {type,approved,target,remaining:Math.max(0,target-approved),pending:own.filter(p=>p.status==='pending'&&activities.some(a=>a.id===p.activityId&&!a.deleted&&!['draft','cancelled'].includes(a.status))).length,scheduled}})}))}
