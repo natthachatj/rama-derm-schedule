@@ -4,11 +4,15 @@ Presentation tracking is attached to existing calendar activities. It requires n
 
 ## Roles and access
 
-Edit an activity and assign Presenter, Co-presenter or Attendee for each fellow. These are separate from the Responsible fellows (organizers) field. Presenters and co-presenters each receive one credit per activity after their own instructor sign-off and admin approval; organizers and attendees receive no automatic presentation credit. Activities without presentation roles are not added to tracking. Programme templates preserve roles within the same year and clear fellow roles when reused in a different cohort.
+Edit an activity and assign Presenter, Co-presenter or Attendee for each fellow. These are separate from the Responsible fellows (organizers) field. Presenters and co-presenters each receive one credit per activity after their own completion submission and admin approval (instructor sign-off is required for categories other than Journal club); organizers and attendees receive no automatic presentation credit. Activities without presentation roles are not added to tracking. Programme templates preserve roles within the same year and clear fellow roles when reused in a different cohort.
 
 Only admin sees Presentation progress, its overview shortcut, yearly counters, category targets, progress bars, completion matrix, July–June timeline, filtered CSV export and approval queue. Fellows see My presentations, containing only their own submissions and approval history. They can also access their own record from the activity detail. Public visitors and other fellows receive no signatures, feedback, submission evidence or history in API responses. Targets are returned only to admin.
 
-## Fellow and instructor workflow
+## Journal club: fellow confirmation and admin approval
+
+Journal club requires no instructor signature. After presenting, the assigned fellow opens their record, optionally adds slides/evidence, confirms they have finished, and selects **Mark finished & send for approval**. The submission goes directly to the admin queue; it earns no credit until admin approves it. Each co-presenter submits separately. Future dates cannot be marked finished. Returned or reopened records are corrected and submitted again without a signature. Changed presentation details invalidate the prior completion confirmation and approval while preserving them in history. Previously signed Journal club records remain reviewable and approvable.
+
+## Fellow and instructor workflow (other categories)
 
 1. Open My presentations (or the calendar activity), choose the relevant occurrence, and save presentation details. Optional evidence is a full HTTP(S) slides link, submission notes, or a PDF attachment of at most 512 KB.
 2. On or after the presentation date, choose Instructor sign-off and give the device to the instructor. The instructor enters/selects their name, chooses Satisfactory or Revision needed, adds optional feedback, draws their signature and confirms that they observed the presentation.
@@ -26,6 +30,8 @@ Signed/pending/approved evidence is locked. Changing topic, category, date, time
 ## Requirements, timeline and exports
 
 Set category targets for each academic year, with defaults and optional fellow-specific overrides. No assumed quotas are created: zero means no required target. Approved counts, pending approvals and remaining requirements are separate. Progress bars show approved/required per fellow and category. A matrix compares all fellows. The July–June timeline and records table can be filtered by fellow, activity category and workflow status. Export filtered records downloads CSV with presenter role, topic/category/date, workflow status, whether credit is currently counted, instructor assessment/signing time and admin approval name/time. Select one fellow for their individual yearly report. Times in the UI use ICT; CSV timestamp headings explicitly use UTC.
+
+Journal club CSV records also include the fellow’s completion-confirmation timestamp.
 
 One record per activity/presenter prevents duplicate submissions from creating extra credit. A previously approved same-topic/category presentation triggers an explicit duplicate acknowledgment before another submission. There is no bulk approve button: final approval is per presenter record.
 
