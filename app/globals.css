@@ -32,3 +32,5 @@
 @media(max-width:800px){.approval-inbox-heading{flex-direction:column}.approval-inbox-filters{gap:12px}.approval-inbox-filters>label{min-width:0;flex:1}.approval-pagination{width:100%;justify-content:space-between;margin:0}.approval-pending-list{grid-template-columns:1fr}.approval-review-title{padding:16px}.approval-record-scroll{padding:0 14px;max-height:65dvh}.approval-sticky-actions{flex-wrap:wrap}.approval-sticky-actions .button{flex:1;white-space:normal;font-size:12px}.approval-review-title h3{font-size:19px}}
 
 .fellow-presentation-workspace>summary{display:none}
+
+.batch-preview-list{max-height:340px;overflow:auto;border:1px solid #dbe3ef;border-radius:14px;padding:12px}.activity-modal fieldset{border:1px solid #dbe3ef;border-radius:14px;padding:16px;margin:16px 0}.activity-modal details{margin:12px 0}.activity-table select{max-width:220px}.activity-modal summary{cursor:pointer;font-weight:600;color:#294d85}
