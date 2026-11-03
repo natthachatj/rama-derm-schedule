@@ -1,0 +1,14 @@
+import {test,after} from 'node:test';
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {pathToFileURL} from 'node:url';
+const dir=await mkdtemp(new URL('../.auth-test-',import.meta.url));
+await build({entryPoints:['lib/visible-refresh.ts'],outfile:dir+'/visible-refresh.mjs',bundle:true,platform:'node',format:'esm'});
+const {startVisibleRefresh,VISIBLE_REFRESH_MS,acceptsSnapshot}=await import(pathToFileURL(dir+'/visible-refresh.mjs'));
+after(()=>rm(dir,{recursive:true,force:true}));
+function fixture(initial='visible'){let listener,time=0,requests=0;const timers=new Map();let sequence=0;const source={visibilityState:initial,addEventListener:(type,fn)=>listener=fn,removeEventListener:(type,fn)=>{assert.equal(listener,fn);listener=undefined}};const clock={setInterval:(fn,delay)=>{const id=++sequence;timers.set(id,{fn,delay,due:time+delay});return id},clearInterval:id=>timers.delete(id)};const stop=startVisibleRefresh(source,()=>requests++,clock);return {get requests(){return requests},get timers(){return timers.size},stop,visibility(value){source.visibilityState=value;listener?.()},advance(ms){const end=time+ms;while(true){let next;for(const [id,t] of timers)if(t.due<=end&&(!next||t.due<next[1].due))next=[id,t];if(!next)break;time=next[1].due;next[1].due+=next[1].delay;next[1].fn()}time=end}};}
+test('visible tabs refresh immediately then once every three minutes',()=>{const f=fixture();assert.equal(VISIBLE_REFRESH_MS,180000);assert.equal(f.requests,1);f.advance(179999);assert.equal(f.requests,1);f.advance(1);assert.equal(f.requests,2);f.advance(180000);assert.equal(f.requests,3);f.stop()});
+test('hidden tabs stop all refresh timers and refresh immediately on return with a fresh interval',()=>{const f=fixture();f.advance(60000);f.visibility('hidden');assert.equal(f.timers,0);f.advance(3600000);assert.equal(f.requests,1);f.visibility('visible');assert.equal(f.requests,2);assert.equal(f.timers,1);f.visibility('visible');assert.equal(f.requests,2);assert.equal(f.timers,1);f.advance(179999);assert.equal(f.requests,2);f.advance(1);assert.equal(f.requests,3);f.stop()});
+test('initially hidden tabs wait for visibility and cleanup prevents future requests',()=>{const f=fixture('hidden');assert.equal(f.requests,0);f.advance(900000);assert.equal(f.requests,0);f.visibility('visible');assert.equal(f.requests,1);f.stop();assert.equal(f.timers,0);f.advance(900000);f.visibility('visible');assert.equal(f.requests,1)});
+test('older refresh responses cannot overwrite a newer successful save',()=>{assert.equal(acceptsSnapshot(12,11),false);assert.equal(acceptsSnapshot(12,12),true);assert.equal(acceptsSnapshot(12,13),true);assert.equal(acceptsSnapshot(-1,0),true);assert.equal(acceptsSnapshot(12,undefined),false);assert.equal(acceptsSnapshot(12,NaN),false)});
