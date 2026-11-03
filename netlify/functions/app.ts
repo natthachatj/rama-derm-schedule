@@ -1,3 +1,4 @@
+import {thaiHolidayResponse} from '../../lib/thai-holidays';
 import {createScheduleApi} from '../../lib/schedule-api';
 import {buildPublishedPdf} from '../../lib/published-pdf';
 import {loadSnapshot,saveSnapshot} from '../server/store';
@@ -14,6 +15,7 @@ export default async function handler(request:Request,context?:{ip?:string}){try
  if(path==='/auth/google/start'&&request.method==='GET')return await googleStart(request);
  if(path==='/auth/google/callback'&&request.method==='GET')return await googleCallback(request);
  if(path==='/auth/logout'&&request.method==='GET')return logout();
+ if(path==='/api/admin/thai-holidays'&&request.method==='GET')return await thaiHolidayResponse(request,await user(),process.env.ADMIN_EMAIL);
  if(path==='/api/schedule'&&request.method==='GET')return await api.GET();
  if(path==='/api/schedule'&&request.method==='POST')return await api.POST(request);
  if(path==='/api/admin/backup'&&request.method==='GET')return await api.BACKUP();
@@ -32,4 +34,4 @@ export default async function handler(request:Request,context?:{ip?:string}){try
  }
  return json({error:'Not found.'},404);
  }catch{return json({error:'The service is unavailable. Please contact the administrator.'},503)}}
-export const config={path:['/auth/password/login','/auth/password/change','/auth/password/status','/api/admin/accounts','/api/auth/methods','/auth/email/request','/auth/email/verify','/api/schedule','/api/schedule/pdf','/api/admin/backup','/api/admin/import','/auth/google/start','/auth/google/callback','/auth/logout']};
+export const config={path:['/api/admin/thai-holidays','/auth/password/login','/auth/password/change','/auth/password/status','/api/admin/accounts','/api/auth/methods','/auth/email/request','/auth/email/verify','/api/schedule','/api/schedule/pdf','/api/admin/backup','/api/admin/import','/auth/google/start','/auth/google/callback','/auth/logout']};

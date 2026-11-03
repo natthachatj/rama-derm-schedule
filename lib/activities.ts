@@ -9,13 +9,13 @@ export const activityFields=z.object({title:z.string().trim().min(1,'Enter a top
 export type ActivityDraft=z.infer<typeof activityFields>;
 export const recurrenceSchema=z.object({frequency:z.enum(['none','daily','weekly','monthly']),interval:z.number().int().min(1).max(52),weekdays:z.array(z.number().int().min(0).max(6)).max(7),until:activityDate});
 export type Recurrence=z.infer<typeof recurrenceSchema>;
-export type ActivityRow=ActivityDraft&{rowId:string;recurrence?:Recurrence};
+export type ActivityRow=ActivityDraft&{rowId:string;preferredWeekdays?:number[];recurrence?:Recurrence};
 export type ActivityHistory={at:string;actor:string;change:string;before?:ActivityDraft};
 export type Activity=ActivityDraft&{id:string;year:number;createdBy:string;createdByFellow?:string;created:string;updated:string;version:number;seriesId?:string;seriesIndex?:number;seriesDate?:string;batchId?:string;batchName?:string;deleted?:boolean;history:ActivityHistory[]};
 export type ActivityTemplate={id:string;name:string;year:number;rows:ActivityRow[];autoRules?:AutoRules;version:number;updated:string};
 export type ActivityStaff={id:string;name:string;active:boolean};
 export const activityRecordSchema=activityFields.extend({id:z.string(),year:z.number().int(),createdBy:z.string(),createdByFellow:z.string().optional(),created:z.string(),updated:z.string(),version:z.number().int().nonnegative(),seriesId:z.string().optional(),seriesIndex:z.number().int().nonnegative().optional(),seriesDate:activityDate.optional(),batchId:z.string().optional(),batchName:z.string().max(120).optional(),deleted:z.boolean().optional(),history:z.array(z.object({at:z.string(),actor:z.string(),change:z.string(),before:activityFields.optional()})).max(100)});
-export const templateRowSchema=activityFields.extend({date:z.union([activityDate,z.literal('')]),rowId:z.string().min(1).max(100),recurrence:recurrenceSchema.optional()});
+export const templateRowSchema=activityFields.extend({date:z.union([activityDate,z.literal('')]),rowId:z.string().min(1).max(100),preferredWeekdays:z.array(z.number().int().min(0).max(6)).min(1).max(7).optional(),recurrence:recurrenceSchema.optional()});
 export const templateSchema=z.object({id:z.string(),name:z.string().trim().min(1).max(120),year:z.number().int().min(2020).max(2100),rows:z.array(templateRowSchema).min(1).max(100),autoRules:autoRulesSchema.optional(),version:z.number().int().nonnegative(),updated:z.string()});
 export const activityStaffSchema=z.object({id:z.string(),name:z.string().trim().min(1).max(120),active:z.boolean()});
 export const academicStart=(year:number)=>`${year}-07-01`;

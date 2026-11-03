@@ -1,0 +1,1 @@
+export function moveRow<T extends {rowId:string}>(rows:T[],source:string,target:string):T[]{const from=rows.findIndex(r=>r.rowId===source),to=rows.findIndex(r=>r.rowId===target);if(from<0||to<0||from===to)return rows;const next=[...rows];const [row]=next.splice(from,1);next.splice(to,0,row);return next;}
