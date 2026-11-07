@@ -1,3 +1,4 @@
+import { registryValues } from './usability';
 import { editRequestSchema, mergeEdit, auditEdit, same } from './edit';
 import { caseSummary, text } from './research';
 import { fields, SOURCES, FORM_VERSION, type RegistryKind } from './catalog';
@@ -31,12 +32,12 @@ export function createClinicalService(ports: ClinicalPorts) {
             fail('Clinical submission access is disabled. Contact the clinical owner.');
     } }
     async function list() { const a = await actor(); if (a.owner)
-        return (await repo.all()).map(r => ({ id: r.id, kind: r.kind, owner: r.owner, fellow: r.fellow, year: r.year, status: r.status, revision: r.revision, created: r.created, updated: r.updated, historical: r.historical, processing: r.processing, folderId: r.folderId, summary: caseSummary(r), searchText: [r.id, r.fellow, text(r, r.kind === 'ravc' ? 'ravc_B' : 'nodule_B'), ...Object.values(caseSummary(r))].join(' ') })); const rows = await repo.list(); return rows.filter(r => a.memberships.some(m => m.year === r.year && m.id === r.fellow)).map(r => ({ id: r.id, kind: r.kind, status: r.status, year: r.year, created: r.created, updated: r.updated, revision: r.revision, processing: r.processing })); }
+        return (await repo.all()).map(r => ({ id: r.id, kind: r.kind, owner: r.owner, fellow: r.fellow, year: r.year, status: r.status, revision: r.revision, created: r.created, updated: r.updated, historical: r.historical, processing: r.processing, folderId: r.folderId, trashedAt: r.trashedAt, filterValues: registryValues(r), summary: caseSummary(r), searchText: [r.id, r.fellow, text(r, r.kind === 'ravc' ? 'ravc_B' : 'nodule_B'), ...Object.values(caseSummary(r))].join(' ') })); const rows = await repo.list(); return rows.filter(r => !r.trashedAt && a.memberships.some(m => m.year === r.year && m.id === r.fellow)).map(r => ({ id: r.id, kind: r.kind, status: r.status, year: r.year, created: r.created, updated: r.updated, revision: r.revision, processing: r.processing })); }
     async function read(id: string) { const a = await actor(); if (!a.owner) {
         const index = (await repo.list()).find(r => r.id === id);
-        if (!index || index.status !== 'draft' || !a.memberships.some(m => m.year === index.year && m.id === index.fellow))
+        if (!index || index.trashedAt || index.status !== 'draft' || !a.memberships.some(m => m.year === index.year && m.id === index.fellow))
             fail('Case unavailable. Submitted clinical records are visible only to the clinical owner.');
-    } const r = await repo.get(id); if (!r || !await own(r, a))
+    } const r = await repo.get(id); if (!r || r.trashedAt || !await own(r, a))
         fail('Case unavailable. Submitted clinical records are visible only to the clinical owner.'); await checkEnabled(a, r); return r; }
     async function create(kind: RegistryKind, year: number, fellow: string) { return ports.lock(async () => { const a = await actor(); if (!['ravc', 'nodule'].includes(kind) || !Number.isInteger(year) || year < 2020 || year > 2100)
         fail('Select a valid registry and cohort.'); if (!a.owner && !a.memberships.some(m => m.year === year && m.id === fellow))
@@ -108,9 +109,18 @@ export function createClinicalService(ports: ClinicalPorts) {
         if (![...fields('ravc'), ...fields('nodule')].some(f => f.id === id && f.options) || new Set(options).size !== options.length)
             fail('Invalid answer-choice settings.');
     } await repo.saveSettings(s); return s; }); }
-    async function removeDraft(id: string, revision: number) { return ports.lock(async () => { const a = await actor(); if (!a.owner)
-        fail('Clinical-owner approval is required before deleting a draft.'); const r = await repo.get(id); if (!r || r.status !== 'draft' || r.revision !== revision)
-        fail('Reload the unfinished draft.'); await repo.put({ ...r, revision: r.revision + 1, updated: now() }, a.principal, 'Owner approved draft deletion'); await repo.removeDraft(id); return { deleted: true }; }); }
+    async function removeDraft(id: string, revision: number) { return ports.lock(async () => {
+        const a = await actor(), r = await read(id);
+        if (r.status !== 'draft' || r.revision !== revision) fail('Reload the unfinished draft before moving it to trash.');
+        await repo.put({ ...r, trashedAt: now(), trashedBy: a.principal, revision: r.revision + 1, updated: now() }, a.principal, 'Draft moved to trash');
+        return { trashed: true };
+    }); }
+    async function restoreDraft(id: string, revision: number) { return ports.lock(async () => {
+        const a = await actor(); if (!a.owner) fail('Only the clinical owner can restore drafts.');
+        const r = await repo.get(id); if (!r || r.status !== 'draft' || !r.trashedAt || r.revision !== revision) fail('Reload draft trash before restoring.');
+        const next = { ...r, revision: r.revision + 1, updated: now() }; delete next.trashedAt; delete next.trashedBy;
+        await repo.put(next, a.principal, 'Owner restored draft'); return { restored: true };
+    }); }
     async function link(id: string, revision: number, otherId: string) { return ports.lock(async () => { const a = await actor(); if (!a.owner)
         fail('Clinical-owner access required.'); const r = await repo.get(id), other = await repo.get(otherId); if (!r || !other || r.id === other.id || r.status === 'draft' || other.status === 'draft' || r.revision !== revision)
         fail('Choose two existing submitted cases and reload first.'); for (const [x, y] of [[r, other], [other, r]])
@@ -122,5 +132,5 @@ export function createClinicalService(ports: ClinicalPorts) {
         const next = { ...r, folderId, pdfId: r.folderId === folderId ? r.pdfId : undefined, revision: r.revision + 1, updated: now() };
         await repo.put(next, a.principal, 'Owner linked an existing private case folder'); return next;
     }); }
-    return { edit, folder, list, read, create, save, process, processSubmission, approve, history, settings, formOptions, removeDraft, link };
+    return { edit, folder, list, read, create, save, process, processSubmission, approve, history, settings, formOptions, removeDraft, restoreDraft, link };
 }

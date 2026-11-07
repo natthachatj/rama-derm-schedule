@@ -151,6 +151,7 @@ export async function handleClinical(request: Request) {
                     return json({ record: await service.folder(body.id, body.revision, folderId, (id, caseId) => validateCaseFolder(real.google, id, caseId)) });
                 }
                 case 'retry': return json({ record: await service.process(body.id, body.revision) });
+                case 'restoreDraft': return json(await service.restoreDraft(body.id, body.revision));
                 case 'deleteDraft': return json(await service.removeDraft(body.id, body.revision));
                 case 'link': return json(await service.link(body.id, body.revision, body.otherId));
                 case 'settings': return json({ settings: await service.settings(body.settings) });

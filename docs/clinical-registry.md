@@ -206,3 +206,40 @@ The owner explicitly runs Update response Sheet & PDF afterward. No new storage 
 
 `tests/clinical-edit.test.mjs` covers role boundaries, scoped updates, stale edits, conflicts,
 revision-bound resolutions, legacy gaps, audit notes, follow-up merges and retry idempotency.
+
+### Mobile registry usability and dashboard
+
+Owner editing has a compact fixed action bar with safe-area padding and keyboard-aware positioning.
+The bar can reserve space for a visible hosting-branding link. Required omissions and invalid values
+have named, tappable issue lists, red field/section markers, and inline explanations. Conditional
+hidden fields and optional blanks are not flagged. Standard-choice mismatches receive separate amber
+review suggestions; original answers and configured extra choices remain intact. Unrelated missing
+information does not block a valid owner edit. Fellow submission still checks required fields.
+
+Delete draft now means recoverable trash. The authenticated fellow can trash only their own accessible
+unfinished draft; the clinical owner can trash accessible drafts and alone can restore them. Both
+operations validate revision and draft status and write audit history. Trashed drafts are excluded
+from active lists and fellow read/save requests; owner trash contains Restore, without permanent
+purge or Drive deletion. Trash metadata lives in the existing Registry Records JSON and index,
+requiring no new columns or paid service. Submitted records cannot enter this workflow.
+
+Owner-only registry filters use recorded categorical values: sex, material, complication, affected
+area, dissolution technique/agent, brand, and other suitable choice fields. Multiple values within
+one factor use OR; separate factors use AND. Missing states remain explicit. Registry switches
+clear incompatible filters; selected values have removable chips. More filters provides a mobile
+full-height panel with explicit Apply/Clear/Cancel, keyboard focus containment and Escape support.
+These are record-list filters, distinct from episode-based dashboard/research cohorts.
+
+The dashboard defaults to monthly case counts, age distribution, sex, complication, affected area
+and material, plus four labeled summary cards. Customization adds treatment, dissolution technique,
+agent/sessions, clinical outcome, wound-healing status, three-month sequelae and latest-assessment
+recurrence. Counts and percentages use explicitly displayed known-episode denominators; missing
+and conflicting information is excluded and reported. Linked cases count once. Three-month sequelae
+retain the established day 60–120 endpoint; latest recurrence is separately labeled. Chart selection
+shows matching case buttons from the same filtered cohort. Stable category colors, horizontal bars
+for clinical labels, monthly/age columns, empty states and single-column mobile layout improve reading.
+Only chart names are persisted as browser preferences; clinical values and filters are not persisted.
+
+Validation adds fictional tests for trash ownership, restoration, stale revisions, submission boundaries,
+missing/conditional/structured field guidance, private filter payloads, OR/AND matching, categorical values,
+chart denominators, linked conflicts, endpoint eligibility and stable colors. No live patient data is used.

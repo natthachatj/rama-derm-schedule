@@ -20,6 +20,8 @@ export type CaseRecord = CaseForm & {
     formVersion: number;
     created: string;
     updated: string;
+    trashedAt?: string;
+    trashedBy?: string;
     submittedAt?: string;
     reviewedAt?: string;
     source?: {
