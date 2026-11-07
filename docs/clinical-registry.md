@@ -8,7 +8,7 @@ The implementation is on `feature/clinical-case-registry`. Do not merge/deploy t
 
 ## Owner configuration
 
-1. Set `CLINICAL_OWNER_EMAIL` in the production Netlify environment to the owner's verified Google email. This is intentionally separate from `ADMIN_EMAIL`; scheduling-administrator status never grants clinical access.
+1. The designated clinical owner is `natthachat.j.md@gmail.com`. Set `CLINICAL_OWNER_EMAIL=natthachat.j.md@gmail.com` in the production Netlify environment (including Functions runtime scope). The example file records the intended value; editing it does not configure the deployed environment. This is intentionally separate from `ADMIN_EMAIL`; scheduling-administrator status never grants clinical access.
 2. Optionally pin `CLINICAL_OWNER_GOOGLE_SUB` to the Google subject ID. Password accounts and email-code sessions are rejected as clinical-owner identities even if their email matches.
 3. Reuse the existing Google web OAuth client, enable Google Drive API and Google Sheets API, and register `https://rama-derm-schedule.netlify.app/auth/clinical/google/callback`.
 4. Sign in with that Google account and choose Clinical registry → Connect Google Sheets & Drive. Consent is for Drive and Sheets access on behalf of the owner. The app never supplies the owner's tokens to fellows.
