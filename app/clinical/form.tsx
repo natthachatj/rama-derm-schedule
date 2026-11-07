@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { ArrowLeft, ArrowRight, Save, Plus, Trash2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { fields, sectionTitles, SOURCES, type Field } from '../../lib/clinical/catalog';
-import { answerStates, stateLabels, answerText, visible, validateForm, type Answer, type CaseRecord, type CaseEvent, type CaseForm } from '../../lib/clinical/model';
+import { stateLabels, answerText, visible, validateForm, type Answer, type CaseRecord, type CaseEvent, type CaseForm } from '../../lib/clinical/model';
 import { clinicalApi } from './api';
 export default function ClinicalForm({ initial, preview = false, owner = false, extraChoices = {}, onClose, onSaved }: {
     initial: CaseRecord;
@@ -60,7 +61,7 @@ export default function ClinicalForm({ initial, preview = false, owner = false, 
     async function leave() { if (dirty && !await save())
         return; onClose(); }
     function demo() { const answers: Record<string, Answer> = {}; for (const f of fields(form.kind).filter(f => !f.system)) {
-        answers[f.id] = { state: 'unknown', value: '' };
+        answers[f.id] = { state: 'not_applicable', value: '' };
         if (f.condition)
             continue;
         if (f.options?.includes('No'))
@@ -99,7 +100,7 @@ export default function ClinicalForm({ initial, preview = false, owner = false, 
         setConfirmed(!result.errors.length);
     }
     else
-        setConfirmed(false); }}/>I have reviewed the information and explicitly recorded unknown/not-assessed answers where appropriate.</label></div>}
+        setConfirmed(false); }}/>I have reviewed the information and completed the required fields or marked them not applicable.</label></div>}
  {!editableDraft && <label>Reason for this clinical edit<textarea required minLength={3} maxLength={1000} value={reason} onChange={e => setReason(e.target.value)}/></label>}
  <div className="clinical-form-actions"><button className="button" disabled={saving || step === 0} onClick={() => setStep(n => n - 1)}><ArrowLeft size={15}/>Previous</button><button className="button" disabled={saving || !editableDraft && reason.trim().length < 3} onClick={() => void save()}><Save size={15}/>{editableDraft ? 'Save draft' : 'Save clinical edit'}</button>{review && editableDraft ? <button className="button primary" disabled={saving || !confirmed} onClick={() => void save(true)}>Submit case <CheckCircle2 size={15}/></button> : !review && <button className="button primary" disabled={saving} onClick={async () => { if (editableDraft && dirty && !await save())
         return; setStep(n => n + 1); }}>Next <ArrowRight size={15}/></button>}</div></section>;
@@ -110,4 +111,34 @@ function ClinicalField({ field: f, value, onChange, extraChoices, error }: {
     onChange: (a: Answer) => void;
     extraChoices: string[];
     error: boolean;
-}) { const a = value || { state: 'not_recorded', value: '' }, options = [...new Set([...(f.options || []), ...extraChoices])]; return <div className={'clinical-field ' + (error ? 'invalid' : '')}><label htmlFor={'answer-' + f.id}>{f.label}{f.required && <span className="required"> *</span>}{f.private && <span className="tag">Private</span>}</label><select aria-label={'Information status: ' + f.label} value={a.state} onChange={e => onChange({ state: e.target.value as Answer['state'], value: a.value })}>{answerStates.map(s => <option key={s} value={s}>{stateLabels[s]}</option>)}</select>{a.state === 'recorded' && f.type === 'datetime' && <select aria-label={'Time precision: ' + f.label} value={a.precision || 'minute'} onChange={e => onChange({ ...a, precision: e.target.value as 'day' | 'minute', value: '' })}><option value="minute">Date and time known</option><option value="day">Date known; time unknown</option></select>}{a.state === 'recorded' && (f.type === 'choice' ? <select id={'answer-' + f.id} value={String(a.value)} onChange={e => onChange({ ...a, value: e.target.value })}><option value="">Choose an answer</option>{options.map(o => <option key={o}>{o}</option>)}{typeof a.value === 'string' && a.value && !options.includes(a.value) && <option>{a.value}</option>}</select> : f.type === 'multi' ? <div className="clinical-choice-list">{options.map(o => <label className="clinical-check" key={o}><input type="checkbox" checked={Array.isArray(a.value) ? a.value.includes(o) : a.value.split(', ').includes(o)} onChange={e => { const list = Array.isArray(a.value) ? a.value : a.value ? a.value.split(', ') : []; onChange({ ...a, value: e.target.checked ? [...new Set([...list, o])] : list.filter(x => x !== o) }); }}/>{o}</label>)}</div> : f.type === 'long' ? <textarea id={'answer-' + f.id} rows={3} maxLength={6000} value={String(a.value)} onChange={e => onChange({ ...a, value: e.target.value })}/> : <input id={'answer-' + f.id} type={f.type === 'datetime' ? (a.precision === 'day' ? 'date' : 'datetime-local') : f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'} min={f.min} max={f.max} step={f.type === 'number' ? 'any' : undefined} maxLength={6000} value={String(a.value)} onChange={e => onChange({ ...a, value: e.target.value })}/>)}{a.state === 'recorded' && (String(a.value) === 'Other' || Array.isArray(a.value) && a.value.includes('Other')) && <small>Describe unusual details in a dated event, or ask the clinical owner to add a specific answer choice.</small>}</div>; }
+}) {
+    const container = useRef<HTMLDivElement>(null);
+    const a = value || { state: 'not_recorded', value: '' };
+    const options = [...new Set([...(f.options || []), ...extraChoices])];
+    const showInput = a.state === 'recorded' || a.state === 'not_recorded';
+    const legacyState = !showInput && a.state !== 'not_applicable';
+    const inputId = 'answer-' + f.id;
+    function recordValue(value: Answer['value']) { onChange({ ...a, state: 'recorded', value }); }
+    function startRecording() {
+        // Mount the input and focus in the same tap so mobile keyboards open.
+        flushSync(() => onChange({ ...a, state: 'recorded' }));
+        container.current?.querySelector<HTMLElement>('[data-answer-input]')?.focus();
+    }
+    return <div ref={container} className={'clinical-field ' + (error ? 'invalid' : '')}>
+        <label id={inputId + '-label'} htmlFor={inputId}>{f.label}{f.required && <span className="required"> *</span>}{f.private && <span className="tag">Private</span>}</label>
+        <div className="clinical-answer-status" role="group" aria-label={'Information status: ' + f.label}>
+            <button type="button" aria-pressed={a.state === 'recorded'} onClick={startRecording}>Record</button>
+            <button type="button" aria-pressed={a.state === 'not_applicable'} onClick={() => onChange({ ...a, state: 'not_applicable' })}>Not applicable</button>
+        </div>
+        {legacyState && <small>Saved answer: {stateLabels[a.state]}. Choose Record or Not applicable to change it.</small>}
+        {showInput && <>
+            {f.type === 'datetime' && <select aria-label={'Time precision: ' + f.label} value={a.precision || 'minute'} onChange={e => onChange({ ...a, precision: e.target.value as 'day' | 'minute', value: '' })}><option value="minute">Date and time known</option><option value="day">Date known; time unknown</option></select>}
+            {f.type === 'choice' ? <select data-answer-input id={inputId} value={String(a.value)} onChange={e => recordValue(e.target.value)}><option value="">Choose an answer</option>{options.map(o => <option key={o}>{o}</option>)}{typeof a.value === 'string' && a.value && !options.includes(a.value) && <option>{a.value}</option>}</select>
+                : f.type === 'multi' ? <div className="clinical-choice-list" role="group" aria-labelledby={inputId + '-label'}>{options.map(o => <label className="clinical-check" key={o}><input data-answer-input type="checkbox" checked={Array.isArray(a.value) ? a.value.includes(o) : a.value.split(', ').includes(o)} onChange={e => { const list = Array.isArray(a.value) ? a.value : a.value ? a.value.split(', ') : []; recordValue(e.target.checked ? [...new Set([...list, o])] : list.filter(x => x !== o)); }}/>{o}</label>)}</div>
+                    : f.type === 'long' ? <textarea data-answer-input id={inputId} rows={3} maxLength={6000} placeholder="Enter details" value={String(a.value)} onChange={e => recordValue(e.target.value)}/>
+                        : <input data-answer-input id={inputId} type={f.type === 'datetime' ? (a.precision === 'day' ? 'date' : 'datetime-local') : f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'} inputMode={f.type === 'number' ? 'decimal' : undefined} min={f.min} max={f.max} step={f.type === 'number' ? 'any' : undefined} maxLength={6000} placeholder={f.type === 'number' ? 'Enter a number' : 'Enter answer'} value={String(a.value)} onChange={e => recordValue(e.target.value)}/>
+            }
+        </>}
+        {a.state === 'recorded' && (String(a.value) === 'Other' || Array.isArray(a.value) && a.value.includes('Other')) && <small>Describe unusual details in a dated event, or ask the clinical owner to add a specific answer choice.</small>}
+    </div>;
+}
