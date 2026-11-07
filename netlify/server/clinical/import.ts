@@ -1,0 +1,38 @@
+import { createHash } from 'node:crypto';
+import { fields, SOURCES, column, type RegistryKind } from '../../../lib/clinical/catalog';
+import { newRecord, type Answer, type CaseRecord } from '../../../lib/clinical/model';
+import { SheetsRepository, registryIdHeader } from './storage';
+const fingerprint = (row: string[]) => createHash('sha256').update(JSON.stringify(row)).digest('hex');
+export async function importPreview(repo: SheetsRepository, kind: RegistryKind) { const headers = await repo.sourceHeaders(kind), end = column(headers.length - 1), rows = await repo.google.values(SOURCES[kind].sheetId, `'Form Responses 1'!A2:${end}`), idCol = headers.indexOf(registryIdHeader); const existing = new Set((await repo.list()).map(r => r.id)); const typed = rows.length ? await repo.google.request(`sheets/v4/spreadsheets/${SOURCES[kind].sheetId}?includeGridData=true&ranges=${encodeURIComponent(`'Form Responses 1'!A2:${end}${rows.length + 1}`)}&fields=sheets(data(startRow,rowData(values(effectiveValue,effectiveFormat(numberFormat(type))))))`) : null; const typedRows = typed?.sheets?.[0]?.data?.[0]?.rowData || []; return rows.flatMap((row: string[], i: number) => { if (!row.slice(0, idCol >= 0 ? idCol : headers.length).some(Boolean))
+    return []; const answers: Record<string, Answer> = {}, sourceRaw: Record<string, string> = {}; for (const f of fields(kind).filter(f => !f.extra)) {
+    const at = headers.indexOf(f.header), raw = at >= 0 ? String(row[at] || '') : '';
+    sourceRaw[f.header] = raw;
+    if (!f.system && raw) {
+        answers[f.id] = { state: 'recorded', value: raw };
+        const cell = typedRows[i]?.values?.[at], format = cell?.effectiveFormat?.numberFormat?.type, serial = cell?.effectiveValue?.numberValue;
+        if ((f.type === 'date' || f.type === 'datetime') && typeof serial === 'number' && ['DATE', 'DATE_TIME'].includes(format)) {
+            const iso = new Date(Date.UTC(1899, 11, 30) + Math.round(serial * 86400000)).toISOString();
+            answers[f.id] = { state: 'recorded', value: format === 'DATE_TIME' && f.type === 'datetime' ? iso.slice(0, 16) : iso.slice(0, 10), ...(f.type === 'datetime' && format === 'DATE' ? { precision: 'day' as const } : {}) };
+        }
+    }
+} const id = idCol >= 0 ? row[idCol] : undefined; return [{ row: i + 2, kind, fingerprint: fingerprint(row), answers, sourceRaw, existingId: id || undefined, alreadyImported: !!id && existing.has(id), warnings: ['Original answers retained; ambiguous dates and combined fields require owner review.'] }]; }); }
+export async function commitImport(repo: SheetsRepository, kind: RegistryKind, selections: {
+    row: number;
+    fingerprint: string;
+}[], actor: string) { if (selections.length < 1 || selections.length > 20)
+    throw Error('Import 1–20 reviewed rows at a time.'); const candidates = await importPreview(repo, kind); const selected = selections.map(s => { const c = candidates.find(c => c.row === s.row && c.fingerprint === s.fingerprint); if (!c)
+    throw Error('Source rows changed since preview. Generate a new import preview.'); return c; }); let imported = 0, skipped = 0; const headers = await repo.sourceHeaders(kind), at = headers.indexOf(registryIdHeader); if (at < 0)
+    throw Error('Complete spreadsheet setup first.'); for (const c of selected) {
+    if (c.alreadyImported) {
+        skipped++;
+        continue;
+    }
+    const record: CaseRecord = { ...newRecord(kind, actor, 'historical', 0), ...(c.existingId ? { id: c.existingId } : {}), answers: c.answers, sourceRaw: c.sourceRaw, status: 'submitted', historical: true, processing: 'complete', source: { spreadsheet: SOURCES[kind].sheetId, sheet: SOURCES[kind].tab, row: c.row, fingerprint: c.fingerprint } };
+    if (await repo.get(record.id)) {
+        skipped++;
+        continue;
+    }
+    await repo.google.update(SOURCES[kind].sheetId, `'Form Responses 1'!${column(at)}${c.row}`, [[record.id]]);
+    await repo.put(record, actor, 'Historical import · original answers preserved · no folder creation');
+    imported++;
+} return { imported, skipped }; }

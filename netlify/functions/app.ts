@@ -1,3 +1,5 @@
+import {handleClinical} from '../server/clinical/handler';
+import {clinicalGoogleStart,clinicalGoogleCallback} from '../server/clinical/google';
 import {thaiHolidayResponse} from '../../lib/thai-holidays';
 import {createScheduleApi} from '../../lib/schedule-api';
 import {buildPublishedPdf} from '../../lib/published-pdf';
@@ -9,6 +11,9 @@ import {handlePasswordAuth} from '../server/password-auth';
 import {emailConfigured,handleEmailAuth} from '../server/email-auth';
 const json=(v:unknown,status=200)=>Response.json(v,{status,headers:{'Cache-Control':'no-store'}});
 export default async function handler(request:Request,context?:{ip?:string}){try{const path=new URL(request.url).pathname;const user=()=>getAuthenticatedUser(request);const api=createScheduleApi({load:loadSnapshot,save:saveSnapshot,getUser:user,adminEmail:()=>process.env.ADMIN_EMAIL,validateFellows:validatePasswordUsernames});
+ if(path==='/auth/clinical/google/start'&&request.method==='GET')return await clinicalGoogleStart(request);
+ if(path==='/auth/clinical/google/callback'&&request.method==='GET')return await clinicalGoogleCallback(request);
+ if(path.startsWith('/api/clinical/'))return await handleClinical(request);
  if(path.startsWith('/auth/password/')||path==='/api/admin/accounts')return await handlePasswordAuth(request,context?.ip||'unknown');
  if(path==='/api/auth/methods'&&request.method==='GET')return json({email:emailConfigured(),password:true});
  if(['/auth/email/request','/auth/email/verify'].includes(path)&&request.method==='POST')return await handleEmailAuth(request,context?.ip||'unknown');
@@ -34,4 +39,4 @@ export default async function handler(request:Request,context?:{ip?:string}){try
  }
  return json({error:'Not found.'},404);
  }catch{return json({error:'The service is unavailable. Please contact the administrator.'},503)}}
-export const config={path:['/api/admin/thai-holidays','/auth/password/login','/auth/password/change','/auth/password/status','/api/admin/accounts','/api/auth/methods','/auth/email/request','/auth/email/verify','/api/schedule','/api/schedule/pdf','/api/admin/backup','/api/admin/import','/auth/google/start','/auth/google/callback','/auth/logout']};
+export const config={path:['/api/clinical/*','/auth/clinical/google/start','/auth/clinical/google/callback','/api/admin/thai-holidays','/auth/password/login','/auth/password/change','/auth/password/status','/api/admin/accounts','/api/auth/methods','/auth/email/request','/auth/email/verify','/api/schedule','/api/schedule/pdf','/api/admin/backup','/api/admin/import','/auth/google/start','/auth/google/callback','/auth/logout']};
