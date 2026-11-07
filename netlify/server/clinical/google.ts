@@ -41,9 +41,21 @@ export async function accessToken() { const value = await secrets().get('google'
     throw Error('Connect the clinical-owner Google account in Registry settings.'); const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID || '', client_secret: process.env.GOOGLE_CLIENT_SECRET || '', refresh_token: decrypt(value.refresh), grant_type: 'refresh_token' }), signal: AbortSignal.timeout(15000) }); if (!r.ok)
     throw Error('Google authorization expired. Reconnect in Registry settings.'); return (await r.json()).access_token as string; }
 export class GoogleClient {
-    constructor(private token: string) { }
-    async request(path: string, method = 'GET', body?: unknown, raw = false) { const r = await fetch('https://www.googleapis.com/' + path, { method, headers: { Authorization: 'Bearer ' + this.token, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20000) }); if (!r.ok)
-        throw Error(`Google request failed (${r.status}). Check connection, permissions and retry.`); return raw ? r : r.status === 204 ? null : r.json(); }
+    constructor(private token: string, private fetcher: typeof fetch = fetch) { }
+    async request(path: string, method = 'GET', body?: unknown, raw = false) {
+        const sheets = path.startsWith('sheets/v4/');
+        if (!sheets && !path.startsWith('drive/v3/'))
+            throw Error('Unsupported Google API request.');
+        // Sheets v4 has its own service host. www.googleapis.com/sheets/v4
+        // returns an HTML 404 before spreadsheet authorization is evaluated.
+        const endpoint = sheets
+            ? 'https://sheets.googleapis.com/' + path.slice('sheets/'.length)
+            : 'https://www.googleapis.com/' + path;
+        const r = await this.fetcher(endpoint, { method, headers: { Authorization: 'Bearer ' + this.token, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20000) });
+        if (!r.ok)
+            throw Error(`Google ${sheets ? 'Sheets' : 'Drive'} request failed (${r.status}). ${r.status === 404 ? 'The requested resource is missing or inaccessible.' : 'Check connection and permissions, then retry.'}`);
+        return raw ? r : r.status === 204 ? null : r.json();
+    }
     async values(id: string, range: string) { return (await this.request(`sheets/v4/spreadsheets/${id}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`)).values || []; }
     async update(id: string, range: string, values: unknown[][]) { return this.request(`sheets/v4/spreadsheets/${id}/values/${encodeURIComponent(range)}?valueInputOption=RAW`, 'PUT', { values }); }
     async append(id: string, range: string, values: unknown[][]) { return this.request(`sheets/v4/spreadsheets/${id}/values/${encodeURIComponent(range)}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, 'POST', { values }); }
