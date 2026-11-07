@@ -1,7 +1,7 @@
 import { possibleDuplicates } from '../../../lib/clinical/analytics';
 import { getAuthenticatedUser, siteOrigin } from '../auth';
 import { loadSnapshot } from '../store';
-import { clinicalOwner, accessToken, GoogleClient, connectionInfo, inspectClinicalPrivacy } from './google';
+import { clinicalOwner, clinicalOwnerEmail, accessToken, GoogleClient, connectionInfo, inspectClinicalPrivacy } from './google';
 import { SheetsRepository, withClinicalLock } from './storage';
 import { processClinicalRecord } from './processing';
 import { previewRepository } from './preview';
@@ -27,7 +27,7 @@ export async function handleClinical(request: Request) {
         const testMember = { year: 2026, id: 'fictional-fellow', name: 'Fictional fellow' };
         const actor: ClinicalActor = { principal: user.userId, owner: owner && !preview, memberships: preview ? [testMember] : active };
         if (url.pathname === '/api/clinical/session') {
-            return json({ owner, eligible: owner || active.length > 0, ownerConfigured: !!process.env.CLINICAL_OWNER_EMAIL, connection: owner ? await connectionInfo() : undefined, memberships: owner ? state.years.flatMap(y => y.fellows.filter(f => !f.retired).map(f => ({ year: y.year, id: f.id, name: fellowName(f) }))) : active, previewMembership: testMember });
+            return json({ owner, eligible: owner || active.length > 0, ownerConfigured: !!clinicalOwnerEmail(), connection: owner ? await connectionInfo() : undefined, memberships: owner ? state.years.flatMap(y => y.fellows.filter(f => !f.retired).map(f => ({ year: y.year, id: f.id, name: fellowName(f) }))) : active, previewMembership: testMember });
         }
         if (!owner && !active.length)
             return json({ error: 'Clinical fellow access required.' }, 403);

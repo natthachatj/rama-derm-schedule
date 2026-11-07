@@ -4,7 +4,9 @@ import { getStore } from '@netlify/blobs';
 import { cookies, cookie, signPayload, verifyPayload, siteOrigin, getAuthenticatedUser, googleConfig } from '../auth';
 import type { AppUser } from '../../../lib/schedule-api';
 const secrets = () => getStore({ name: 'rama-derm-clinical-secrets', consistency: 'strong' });
-export function clinicalOwner(user: AppUser | null) { return !!user && !user.localAccess && /^\d+$/.test(user.userId) && !!process.env.CLINICAL_OWNER_EMAIL && user.email.toLowerCase() === process.env.CLINICAL_OWNER_EMAIL.trim().toLowerCase() && (!process.env.CLINICAL_OWNER_GOOGLE_SUB || user.userId === process.env.CLINICAL_OWNER_GOOGLE_SUB); }
+// Confirmed owner identity, kept server-side. A deployment override may explicitly replace it.
+export function clinicalOwnerEmail() { return (process.env.CLINICAL_OWNER_EMAIL?.trim() || 'natthachat.j.md@gmail.com').toLowerCase(); }
+export function clinicalOwner(user: AppUser | null) { return !!user && !user.localAccess && /^\d+$/.test(user.userId) && user.email.toLowerCase() === clinicalOwnerEmail() && (!process.env.CLINICAL_OWNER_GOOGLE_SUB || user.userId === process.env.CLINICAL_OWNER_GOOGLE_SUB); }
 function key() { if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32)
     throw Error('Clinical encryption is not configured.'); return createHash('sha256').update('clinical-google-v1:' + process.env.SESSION_SECRET).digest(); }
 export function encrypt(value: string) { const iv = randomBytes(12), c = createCipheriv('aes-256-gcm', key(), iv); const data = Buffer.concat([c.update(value, 'utf8'), c.final()]); return Buffer.concat([iv, c.getAuthTag(), data]).toString('base64'); }
@@ -35,7 +37,7 @@ export async function clinicalGoogleCallback(request: Request) { if (process.env
 catch {
     headers.set('Location', siteOrigin() + '/?clinical=connection-failed');
 } return new Response(null, { status: 302, headers }); }
-export async function accessToken() { const value = await secrets().get('google', { type: 'json' }) as any; if (!value || value.email.toLowerCase() !== process.env.CLINICAL_OWNER_EMAIL?.trim().toLowerCase() || process.env.CLINICAL_OWNER_GOOGLE_SUB && value.sub !== process.env.CLINICAL_OWNER_GOOGLE_SUB)
+export async function accessToken() { const value = await secrets().get('google', { type: 'json' }) as any; if (!value || value.email.toLowerCase() !== clinicalOwnerEmail() || process.env.CLINICAL_OWNER_GOOGLE_SUB && value.sub !== process.env.CLINICAL_OWNER_GOOGLE_SUB)
     throw Error('Connect the clinical-owner Google account in Registry settings.'); const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID || '', client_secret: process.env.GOOGLE_CLIENT_SECRET || '', refresh_token: decrypt(value.refresh), grant_type: 'refresh_token' }), signal: AbortSignal.timeout(15000) }); if (!r.ok)
     throw Error('Google authorization expired. Reconnect in Registry settings.'); return (await r.json()).access_token as string; }
 export class GoogleClient {
@@ -50,4 +52,4 @@ export class GoogleClient {
         throw Error('PDF upload failed. Retry processing.'); return file.id as string; }
 }
 export function privatePermissions(permissions: any[], email: string) { return Array.isArray(permissions) && permissions.length > 0 && permissions.every(p => p.type === 'user' && typeof p.emailAddress === 'string' && p.emailAddress.toLowerCase() === email.trim().toLowerCase()); }
-export async function inspectClinicalPrivacy(client: GoogleClient) { const { SOURCES, DRIVE_PARENT } = await import('../../../lib/clinical/catalog'); return Promise.all([{ id: SOURCES.ravc.sheetId, label: 'RAVC response spreadsheet' }, { id: SOURCES.nodule.sheetId, label: 'Nodule response spreadsheet' }, { id: DRIVE_PARENT, label: 'Complications - U/S parent folder' }].map(async (item) => { const data = await client.request(`drive/v3/files/${item.id}?fields=id,trashed,permissions(type,role,emailAddress)&supportsAllDrives=true`); return { ...item, privateToOwner: !data.trashed && privatePermissions(data.permissions, process.env.CLINICAL_OWNER_EMAIL || '') }; })); }
+export async function inspectClinicalPrivacy(client: GoogleClient) { const { SOURCES, DRIVE_PARENT } = await import('../../../lib/clinical/catalog'); return Promise.all([{ id: SOURCES.ravc.sheetId, label: 'RAVC response spreadsheet' }, { id: SOURCES.nodule.sheetId, label: 'Nodule response spreadsheet' }, { id: DRIVE_PARENT, label: 'Complications - U/S parent folder' }].map(async (item) => { const data = await client.request(`drive/v3/files/${item.id}?fields=id,trashed,permissions(type,role,emailAddress)&supportsAllDrives=true`); return { ...item, privateToOwner: !data.trashed && privatePermissions(data.permissions, clinicalOwnerEmail()) }; })); }
