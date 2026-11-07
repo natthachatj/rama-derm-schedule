@@ -1,12 +1,13 @@
+import type {LeaveDay,LeaveType} from './leave-accounting';
 import type {Presentation,PresentationTargets} from './presentations';
 import type {Activity,ActivityTemplate,ActivityStaff} from './activities';
-export type Fellow={id:string;first:string;last:string;nick:string;email:string;color:string;phone?:string;notes?:string;displayName?:string;staffId?:string;retired?:boolean};
+export type Fellow={id:string;first:string;last:string;nick:string;email:string;color:string;phone?:string;notes?:string;displayName?:string;staffId?:string;retired?:boolean;leaveAllowance?:number};
 export type Slot={id:string;day:number;session:string;clinic:string;track:number};
 export type Rotation={start:string;end:string};
 export type Assignment={fellow:string;extra?:boolean};
 export type Plan={rotations:Rotation[];slots:Slot[];overrides:Record<string,Assignment>;holidays:string[];reviewed:boolean;fellowOrder?:string[]};
 export type Year={year:number;fellows:Fellow[];draft:Plan;published:Plan|null;publishedAt:string|null;dirty:boolean;activityHolidays?:string[];activityHolidaysReviewed?:boolean};
-export type Leave={id:string;year:number;requester:string;reason:string;items:{date:string;slot:string;replacement:string;before?:{published:Assignment|null;draft:Assignment|null;effective:Assignment;draftEffective?:Assignment|null}}[];status:string;created:string;decided?:string;cancelledAt?:string};
+export type Leave={id:string;year:number;requester:string;reason:string;type?:LeaveType;days?:LeaveDay[];chargedDays?:number;quotaOverride?:{by:string;reason:string;at:string};items:{date:string;slot:string;replacement:string;before?:{published:Assignment|null;draft:Assignment|null;effective:Assignment;draftEffective?:Assignment|null}}[];status:string;created:string;decided?:string;cancelledAt?:string};
 export type Notice={id:string;fellow:string;year:number;text:string;read:boolean;created:string};
 export type Workspace={presentations?:Presentation[];presentationTargets?:PresentationTargets[];activities?:Activity[];activityTemplates?:ActivityTemplate[];activityStaff?:ActivityStaff[];years:Year[];leaves:Leave[];notices:Notice[];audit:{at:string;action:string}[]};
 export const colors=['#3766d8','#159f9b','#9255c9','#db8d38','#d05e83'];
