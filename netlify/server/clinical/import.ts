@@ -19,20 +19,14 @@ export async function importPreview(repo: SheetsRepository, kind: RegistryKind) 
 export async function commitImport(repo: SheetsRepository, kind: RegistryKind, selections: {
     row: number;
     fingerprint: string;
-}[], actor: string) { if (selections.length < 1 || selections.length > 20)
-    throw Error('Import 1–20 reviewed rows at a time.'); const candidates = await importPreview(repo, kind); const selected = selections.map(s => { const c = candidates.find(c => c.row === s.row && c.fingerprint === s.fingerprint); if (!c)
-    throw Error('Source rows changed since preview. Generate a new import preview.'); return c; }); let imported = 0, skipped = 0; const headers = await repo.sourceHeaders(kind), at = headers.indexOf(registryIdHeader); if (at < 0)
+}[], actor: string) { if (!Array.isArray(selections) || selections.length < 1 || selections.length > 20 || new Set(selections.map(s => s.row)).size !== selections.length)
+    throw Error('Import 1–20 distinct reviewed rows at a time.'); const candidates = await importPreview(repo, kind); const selected = selections.map(s => { const c = candidates.find(c => c.row === s.row && c.fingerprint === s.fingerprint); if (!c)
+    throw Error('Source rows changed since preview. Generate a new import preview.'); return c; }); let skipped = 0; const records: CaseRecord[] = []; const headers = await repo.sourceHeaders(kind), at = headers.indexOf(registryIdHeader); if (at < 0)
     throw Error('Complete spreadsheet setup first.'); for (const c of selected) {
     if (c.alreadyImported) {
         skipped++;
         continue;
     }
     const record: CaseRecord = { ...newRecord(kind, actor, 'historical', 0), ...(c.existingId ? { id: c.existingId } : {}), answers: c.answers, sourceRaw: c.sourceRaw, status: 'submitted', historical: true, processing: 'complete', source: { spreadsheet: SOURCES[kind].sheetId, sheet: SOURCES[kind].tab, row: c.row, fingerprint: c.fingerprint } };
-    if (await repo.get(record.id)) {
-        skipped++;
-        continue;
-    }
-    await repo.google.update(SOURCES[kind].sheetId, `'Form Responses 1'!${column(at)}${c.row}`, [[record.id]]);
-    await repo.put(record, actor, 'Historical import · original answers preserved · no folder creation');
-    imported++;
-} return { imported, skipped }; }
+    records.push(record);
+} await repo.importHistoricalBatch(records, actor, at); return { imported: records.length, skipped }; }

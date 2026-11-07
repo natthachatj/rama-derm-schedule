@@ -41,7 +41,8 @@ export async function accessToken() { const value = await secrets().get('google'
     throw Error('Connect the clinical-owner Google account in Registry settings.'); const r = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: process.env.GOOGLE_CLIENT_ID || '', client_secret: process.env.GOOGLE_CLIENT_SECRET || '', refresh_token: decrypt(value.refresh), grant_type: 'refresh_token' }), signal: AbortSignal.timeout(15000) }); if (!r.ok)
     throw Error('Google authorization expired. Reconnect in Registry settings.'); return (await r.json()).access_token as string; }
 export class GoogleClient {
-    constructor(private token: string, private fetcher: typeof fetch = fetch) { }
+    constructor(private token: string, private fetcher: typeof fetch = fetch,
+        private pause: (milliseconds: number) => Promise<void> = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds))) { }
     async request(path: string, method = 'GET', body?: unknown, raw = false) {
         const sheets = path.startsWith('sheets/v4/');
         if (!sheets && !path.startsWith('drive/v3/'))
@@ -51,7 +52,20 @@ export class GoogleClient {
         const endpoint = sheets
             ? 'https://sheets.googleapis.com/' + path.slice('sheets/'.length)
             : 'https://www.googleapis.com/' + path;
-        const r = await this.fetcher(endpoint, { method, headers: { Authorization: 'Bearer ' + this.token, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20000) });
+        const options = { method, headers: { Authorization: 'Bearer ' + this.token, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined };
+        let r: Response;
+        for (let attempt = 0; ; attempt++) {
+            r = await this.fetcher(endpoint, { ...options, signal: AbortSignal.timeout(20000) });
+            if (r.status !== 429) break;
+            const retryAfter = r.headers.get('Retry-After');
+            const retrySeconds = retryAfter ? Number(retryAfter) : 0;
+            const delay = retryAfter && !Number.isFinite(retrySeconds)
+                ? Math.max(0, Date.parse(retryAfter) - Date.now())
+                : Math.max(0, retrySeconds * 1000);
+            if (attempt >= 2 || delay > 5000)
+                throw Error(`Google ${sheets ? 'Sheets' : 'Drive'} is temporarily rate limited (429). Wait at least 60 seconds, then refresh the import preview before retrying. Completed imports are skipped.`);
+            await this.pause(Math.max(delay || 0, 2 ** attempt * 1000 + Math.floor(Math.random() * 250)));
+        }
         if (!r.ok)
             throw Error(`Google ${sheets ? 'Sheets' : 'Drive'} request failed (${r.status}). ${r.status === 404 ? 'The requested resource is missing or inaccessible.' : 'Check connection and permissions, then retry.'}`);
         return raw ? r : r.status === 204 ? null : r.json();

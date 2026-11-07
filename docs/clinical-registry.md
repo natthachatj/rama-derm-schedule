@@ -54,7 +54,7 @@ Photos/videos are uploaded manually in Google Drive. The app does not upload, en
 
 Preview reads original responses, maps them by exact header, and preserves raw answers and source references. Typed Google Sheet DATE/DATE_TIME numeric values are converted using their actual serial values; ambiguous date strings remain unparsed and require review. Unknown academic-year associations use `0` internally rather than inventing a year; reporting uses recorded visit/injection dates.
 
-The owner selects up to 20 reviewed rows per batch. A source fingerprint prevents committing a stale preview. The permanent source ID is written before storing the imported record so a retry after a partial failure reuses that ID. Existing imported IDs are skipped. The app is authoritative after import; direct changes to source response copies are not imported over edited cases.
+The owner selects up to 20 reviewed rows per batch. A source fingerprint prevents committing a stale preview. Each reviewed batch writes permanent source IDs, registry rows and audit revisions together in one atomic Sheets batchUpdate request. The registry index is read once for duplicate checks; there are no per-row registry lookups. Existing imported IDs are skipped. Unusually large batches above 1.8 MB require selecting fewer rows. The app is authoritative after import; direct changes to source response copies are not imported over edited cases.
 
 Historical imports, edits, processing retries and exports NEVER create folders automatically. Existing Drive links remain where they are. If an owner chooses to create a historical folder manually in Drive, this release does not automatically adopt that folder.
 
@@ -94,3 +94,5 @@ After deploying this branch and checking both pages without signing in, set Goog
 - Application privacy policy link: `https://rama-derm-schedule.netlify.app/privacy.html`
 
 Keep the existing app name, support email, developer contact and authorized app domain. Do not replace the authorized domain with `netlify.app`. Save and resolve any field-level errors, then return to Audience → Publish app. If Google requires brand/domain or data-access verification, follow the displayed requirements; these pages do not establish verification or guarantee publication. There is no terms-of-service page in this change; do not use an unrelated or nonexistent URL if Google requests one. Publishing OAuth does not publish clinical records or change app authorization.
+
+Historical imports use bounded retries with short exponential backoff only for explicit Google 429 responses. If rate limiting persists or Google asks for a longer delay, the app tells the owner to wait at least 60 seconds and generate a new preview. Network errors and other uncertain write failures are not automatically retried. The new preview detects already completed rows after an interrupted request. Imports never create Drive folders.

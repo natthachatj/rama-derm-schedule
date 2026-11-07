@@ -53,6 +53,36 @@ export class SheetsRepository implements ClinicalRepository {
         await this.google.append(spreadsheet, "'Registry Records'!A:M", [row]); }
     async revisions(id: string) { const found = await this.locate(id); if (!found)
         return []; const rows = await this.google.values(SOURCES[found.kind].sheetId, "'Registry Revisions'!A2:M"); return rows.filter((r: any[]) => r[0] === id).map((r: any[]) => decode(r.slice(9, 13).join('')) as CaseRecord); }
+    async importHistoricalBatch(records: CaseRecord[], actor: string, idColumn: number) {
+        if (!records.length) return;
+        const kind = records[0].kind, spreadsheet = SOURCES[kind].sheetId;
+        if (records.length > 20 || !Number.isInteger(idColumn) || idColumn < 0 ||
+            new Set(records.map(r => r.id)).size !== records.length ||
+            records.some(r => !r.historical || r.kind !== kind || r.source?.spreadsheet !== spreadsheet || !Number.isInteger(r.source?.row) || r.source!.row < 2))
+            throw Error('Invalid historical import batch. Generate a new preview.');
+        const meta = await this.google.request(`sheets/v4/spreadsheets/${spreadsheet}?fields=sheets(properties(sheetId,title))`);
+        const sheetId = (title: string) => {
+            const sheet = meta.sheets?.find((s: any) => s.properties.title === title);
+            if (!sheet) throw Error('Complete spreadsheet setup before importing records.');
+            return sheet.properties.sheetId;
+        };
+        const sourceId = sheetId(SOURCES[kind].tab), recordsId = sheetId('Registry Records'), revisionsId = sheetId('Registry Revisions');
+        const cells = (record: CaseRecord) => ({ values: encode(record).map(value => ({ userEnteredValue: { stringValue: String(value) } })) });
+        const requests: any[] = records.map(record => ({ updateCells: {
+            start: { sheetId: sourceId, rowIndex: record.source!.row - 1, columnIndex: idColumn },
+            rows: [{ values: [{ userEnteredValue: { stringValue: record.id } }] }], fields: 'userEnteredValue'
+        } }));
+        requests.push({ appendCells: { sheetId: recordsId, rows: records.map(cells), fields: 'userEnteredValue' } });
+        requests.push({ appendCells: { sheetId: revisionsId, rows: records.map(record => cells({ ...record,
+            history: [{ at: record.updated, actor, action: 'Historical import · original answers preserved · no folder creation', revision: record.revision }]
+        })), fields: 'userEnteredValue' } });
+        const body = { requests };
+        if (Buffer.byteLength(JSON.stringify(body), 'utf8') > 1800000)
+            throw Error('This import batch contains unusually large records. Select fewer rows and retry.');
+        // One atomic request writes IDs, records and audit rows together. A failed
+        // batch cannot leave source IDs or partial registry rows behind.
+        await this.google.request(`sheets/v4/spreadsheets/${spreadsheet}:batchUpdate`, 'POST', body);
+    }
     async removeDraft(id: string) { const found = await this.locate(id); if (!found)
         return; const r = await this.get(id); if (r?.status !== 'draft')
         throw Error('Submitted cases cannot be deleted as drafts.'); await this.google.update(SOURCES[found.kind].sheetId, `'Registry Records'!A${found.row}:M${found.row}`, [Array(13).fill('')]); }
