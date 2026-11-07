@@ -83,3 +83,14 @@ npx tsc --noEmit --jsx react-jsx --module esnext --moduleResolution bundler --ta
 ```
 
 Browser QA uses an ignored local Vite fixture, a fake session/clinical repository and fictional cases. No real spreadsheets, production case folders or patient records are read or modified by QA. Verify native PowerPoint appearance/font substitution on the intended presentation machine before production adoption; XML editability checks are not a PowerPoint playback test.
+
+## Google publishing: required public links
+
+The public, script-free `about.html` and `privacy.html` pages are copied into the actual Netlify build. They do not require sign-in or read clinical data. The public workspace footer and login screen link to them. The privacy policy documents the implemented data flow; review it before publishing and keep it current with future changes.
+
+After deploying this branch and checking both pages without signing in, set Google Auth Platform → Branding:
+
+- Application home page: `https://rama-derm-schedule.netlify.app/about.html`
+- Application privacy policy link: `https://rama-derm-schedule.netlify.app/privacy.html`
+
+Keep the existing app name, support email, developer contact and authorized app domain. Do not replace the authorized domain with `netlify.app`. Save and resolve any field-level errors, then return to Audience → Publish app. If Google requires brand/domain or data-access verification, follow the displayed requirements; these pages do not establish verification or guarantee publication. There is no terms-of-service page in this change; do not use an unrelated or nonexistent URL if Google requests one. Publishing OAuth does not publish clinical records or change app authorization.
