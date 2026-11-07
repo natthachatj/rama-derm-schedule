@@ -1,3 +1,4 @@
+import { editRequestSchema, mergeEdit, auditEdit, same } from './edit';
 import { caseSummary, text } from './research';
 import { fields, SOURCES, FORM_VERSION, type RegistryKind } from './catalog';
 import { newRecord, validateForm, settingsSchema, defaultSettings, safeReceipt, type CaseRecord, type ClinicalSettings } from './model';
@@ -50,6 +51,25 @@ export function createClinicalService(ports: ClinicalPorts) {
     } if (r.status !== 'draft' && reason.trim().length < 3)
         fail('Enter a reason for editing this submitted record.'); const next: CaseRecord = { ...r, ...form, formVersion: FORM_VERSION, revision: r.revision + 1, updated: now(), ...(submit ? { status: 'submitted', submittedAt: now(), processing: 'pending', processingError: undefined } : {}) }; if (r.status !== 'draft')
         next.processing = 'pending'; await repo.put(next, a.principal, submit ? 'Submitted' : r.status === 'draft' ? 'Draft saved' : 'Clinical edit: ' + reason.trim()); return a.owner || !submit ? next : safeReceipt(next); }); }
+    async function edit(id: string, input: unknown) { return ports.lock(async () => {
+        const a = await actor(); if (!a.owner) fail('Clinical-owner access required.');
+        const request = editRequestSchema.parse(input), latest = await repo.get(id);
+        if (!latest || latest.status === 'draft') fail('Choose a submitted case to edit.');
+        const candidates = request.baseRevision === latest.revision ? [latest] : (await repo.revisions(id)).filter(r => r.revision === request.baseRevision);
+        const base = candidates[0];
+        if (base && candidates.some(r => !same({ kind:r.kind,answers:r.answers,events:r.events,outcomes:r.outcomes }, { kind:base.kind,answers:base.answers,events:base.events,outcomes:base.outcomes }))) fail('The original version has conflicting history entries. Your edits remain on screen; review the saved history before retrying.');
+        if (!base) fail('The original saved version is unavailable. Your edits remain on screen; do not close this page.');
+        const merged = mergeEdit(base, latest, request);
+        if (merged.conflict) return { conflict: merged.conflict };
+        if (!merged.changed.length) return { record: latest, unchanged: true };
+        const validation = validateForm(merged.record, false), oldErrors = validateForm(latest, false).errors;
+        const touched = new Set(merged.changed.map(k => k.startsWith('answer:') ? k.slice(7) : k.startsWith('event:') ? 'events' : 'outcomes'));
+        const errors = validation.errors.filter(e => touched.has(e.field) || !oldErrors.some(old => old.field === e.field && old.message === e.message));
+        if (errors.length) { const e = new Error(errors[0].message); (e as any).validation = errors; throw e; }
+        const next: CaseRecord = { ...merged.record, ...validation.form, revision: latest.revision + 1, formVersion: FORM_VERSION, updated: now(), processing: 'pending', processingError: undefined };
+        await repo.put(next, a.principal, auditEdit(next.kind, merged.changed, request.note));
+        return { record: next };
+    }); }
     async function process(id: string, revision: number) { return ports.lock(async () => { const a = await actor(), r = await repo.get(id); if (!r || r.status === 'draft')
         fail('Submitted case not found.'); if (!a.owner)
         fail('Only the clinical owner can retry processing.'); if (r.revision !== revision)
@@ -102,5 +122,5 @@ export function createClinicalService(ports: ClinicalPorts) {
         const next = { ...r, folderId, pdfId: r.folderId === folderId ? r.pdfId : undefined, revision: r.revision + 1, updated: now() };
         await repo.put(next, a.principal, 'Owner linked an existing private case folder'); return next;
     }); }
-    return { folder, list, read, create, save, process, processSubmission, approve, history, settings, formOptions, removeDraft, link };
+    return { edit, folder, list, read, create, save, process, processSubmission, approve, history, settings, formOptions, removeDraft, link };
 }

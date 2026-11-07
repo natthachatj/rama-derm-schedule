@@ -24,7 +24,7 @@ export default function ClinicalForm({ initial, preview = false, owner = false, 
     const editableDraft = record.status === 'draft';
     function update(next: CaseForm) { sequence.current++; setForm(next); setDirty(true); setConfirmed(false); }
     async function save(submit = false) { if (savingRef.current)
-        return false; const snapshot = current.current, seq = sequence.current; const validation = validateForm(snapshot, submit); if (validation.errors.length) {
+        return false; const snapshot = current.current, seq = sequence.current; let validation: ReturnType<typeof validateForm>; try { validation = validateForm(snapshot, submit); } catch (e) { setError((e as any).issues?.[0]?.message || (e as Error).message || 'Check the entered information.'); return false; } if (validation.errors.length) {
         setErrors(validation.errors);
         setError(validation.errors[0].message);
         return false;
@@ -107,7 +107,7 @@ export default function ClinicalForm({ initial, preview = false, owner = false, 
  <div className="clinical-form-actions"><button className="button" disabled={saving || step === 0} onClick={() => setStep(n => n - 1)}><ArrowLeft size={15}/>Previous</button><button className="button" disabled={saving || !editableDraft && reason.trim().length < 3} onClick={() => void save()}><Save size={15}/>{editableDraft ? 'Save draft' : 'Save clinical edit'}</button>{review && editableDraft ? <button className="button primary" disabled={saving || !confirmed} onClick={() => void save(true)}>Submit case <CheckCircle2 size={15}/></button> : !review && <button className="button primary" disabled={saving} onClick={async () => { if (editableDraft && dirty && !await save())
         return; setStep(n => n + 1); }}>Next <ArrowRight size={15}/></button>}</div></section>;
 }
-function ClinicalField({ field: f, value, onChange, extraChoices, error }: {
+export function ClinicalField({ field: f, value, onChange, extraChoices, error }: {
     field: Field;
     value?: Answer;
     onChange: (a: Answer) => void;

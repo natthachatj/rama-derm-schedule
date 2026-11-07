@@ -135,6 +135,7 @@ export async function handleClinical(request: Request) {
         if (url.pathname === '/api/clinical/action' && request.method === 'POST') {
             switch (body.action) {
                 case 'create': return json({ record: await service.create(body.kind, Number(body.year), body.fellow) });
+                case 'edit': return json(await service.edit(body.id, body.edit));
                 case 'save': return json({ record: await service.save(body.id, body.revision, body.form, false, String(body.reason || '')) });
                 case 'submit': {
                     await service.save(body.id, body.revision, body.form, true);

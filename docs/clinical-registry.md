@@ -186,3 +186,23 @@ never create folders automatically. All source resource privacy gates continue t
 linked episodes, date bounds, endpoint selection/ties, missingness, impossible outcomes, censoring,
 KM ties, known Fisher/Wilson/summary fixtures, known logistic odds ratios and instability, role
 boundaries, folder ancestry/privacy, snapshot immutability/retries and anonymous export bytes.
+
+### Owner section edits
+
+Submitted cases use explicit section saves with a fixed Save/Cancel bar. Opening an editor fetches
+the current record revision. An optional explanation supplements automatic audit descriptions of
+changed field names. Unrelated historical gaps do not block an otherwise valid section edit; new
+invalid values do. Fellow drafts retain their existing autosave and submission validation.
+
+The server checks clinical-owner access before reads, reconstructs the requested base revision,
+and merges only changed fields into the latest record. Unrelated updates survive. Conflicting
+values require explicit mine/latest choices bound to the latest revision; another change triggers
+a fresh comparison. Missing or ambiguous base history fails safely. Retried identical edits are
+no-ops. Unsaved edits remain on screen after failures, with navigation/discard protection.
+
+Add follow-up opens a single dated assessment while preserving prior visits and outcome settings.
+Registry saves mark response processing pending without calling Drive/response synchronization.
+The owner explicitly runs Update response Sheet & PDF afterward. No new storage service is used.
+
+`tests/clinical-edit.test.mjs` covers role boundaries, scoped updates, stale edits, conflicts,
+revision-bound resolutions, legacy gaps, audit notes, follow-up merges and retry idempotency.
