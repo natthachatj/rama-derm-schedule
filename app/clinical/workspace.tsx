@@ -21,7 +21,10 @@ export default function ClinicalWorkspace() {
     useEffect(() => { let alive = true; void clinicalApi('session').then(s => { if (!alive)
         return; setSession(s); if (s.memberships?.length)
         setTarget(`${s.memberships[0].year}:${s.memberships[0].id}`); if (s.eligible && (!s.owner || s.connection?.connected))
-        void load(false); if (s.owner && s.connection?.connected)
+        void load(false); if (s.eligible && !s.owner)
+        void clinicalApi('form-options').then(d => { if (alive)
+            setSettings(current => ({ ...current, extraChoices: d.extraChoices })); }).catch(e => { if (alive)
+            setError(e.message); }); if (s.owner && s.connection?.connected)
         void clinicalApi('settings').then(d => { if (alive)
             setSettings(d.settings); }).catch(() => { }); }).catch(e => setError(e.message)); return () => { alive = false; }; }, []);
     async function task(fn: () => Promise<void>) { setBusy(true); setError(''); try {

@@ -36,6 +36,7 @@ All record mutations are serialized with a private Netlify Blobs lease containin
 
 - Eligibility uses the current roster identity (`academic year + fellow ID`), so the fellow's Google and password login can resume the same own draft.
 - Disabled or archived fellows cannot create/read/edit drafts.
+- Enabled fellows receive owner-configured answer choices through an intake-only endpoint. This endpoint excludes private settings, access lists, exports and clinical records.
 - Drafts autosave after 12 idle seconds and when advancing steps; unsaved navigation is guarded.
 - Submission validates required and visible conditional fields on both client and server. Unknown and not-assessed answers must be explicitly chosen. Validation does not assert clinical correctness.
 - Submission closes fellow read/edit access. Receipt APIs omit answers, source information, folder/PDF IDs, edit history and patient identifiers.

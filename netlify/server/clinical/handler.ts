@@ -63,6 +63,8 @@ export async function handleClinical(request: Request) {
             return json({ records: await service.list() });
         if (url.pathname === '/api/clinical/record' && request.method === 'GET')
             return json({ record: await service.read(url.searchParams.get('id') || '') });
+        if (url.pathname === '/api/clinical/form-options' && request.method === 'GET')
+            return json(await service.formOptions());
         if (url.pathname === '/api/clinical/settings' && request.method === 'GET')
             return json({ settings: await service.settings() });
         if (url.pathname === '/api/clinical/history' && request.method === 'GET')

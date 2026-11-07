@@ -70,6 +70,17 @@ export function createClinicalService(ports: ClinicalPorts) {
         fail('Reload the submitted case.'); const next: CaseRecord = { ...r, status: 'approved', reviewedAt: now(), updated: now(), revision: r.revision + 1, processing: 'pending' }; await repo.put(next, a.principal, 'Submission reviewed'); return next; }); }
     async function history(id: string) { const a = await actor(); if (!a.owner)
         fail('Clinical-owner access required.'); return repo.revisions(id); }
+    async function formOptions() {
+        const a = await actor();
+        if (!a.owner && !a.memberships.length)
+            fail('Clinical fellow access required.');
+        const s = await repo.settings();
+        if (!a.owner && a.memberships.every(m => s.disabledFellows.includes(`${m.year}:${m.id}`)))
+            fail('Clinical submission access is disabled. Contact the clinical owner.');
+        // Only intake choices are shared. Export styles, fellow access settings and
+        // clinical records remain private to the owner.
+        return { extraChoices: structuredClone(s.extraChoices) };
+    }
     async function settings(input?: unknown) { const a = await actor(); if (!a.owner)
         fail('Clinical-owner access required.'); if (input === undefined)
         return repo.settings(); return ports.lock(async () => { const s = settingsSchema.parse(input); for (const [id, options] of Object.entries(s.extraChoices)) {
@@ -83,5 +94,5 @@ export function createClinicalService(ports: ClinicalPorts) {
         fail('Clinical-owner access required.'); const r = await repo.get(id), other = await repo.get(otherId); if (!r || !other || r.id === other.id || r.status === 'draft' || other.status === 'draft' || r.revision !== revision)
         fail('Choose two existing submitted cases and reload first.'); for (const [x, y] of [[r, other], [other, r]])
         await repo.put({ ...x, linkedCaseIds: [...new Set([...x.linkedCaseIds, y.id])], revision: x.revision + 1, updated: now() }, a.principal, 'Linked clinical episode'); return { linked: true }; }); }
-    return { list, read, create, save, process, processSubmission, approve, history, settings, removeDraft, link };
+    return { list, read, create, save, process, processSubmission, approve, history, settings, formOptions, removeDraft, link };
 }
