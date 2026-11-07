@@ -24,6 +24,7 @@ export function exportModel(r: CaseRecord, anonymous = true, sections: number[] 
             string,
             string
         ]) })).filter(s => s.rows.length);
+    if (r.outcomes && sections.includes(6)) { const o = r.outcomes; result.push({ title: 'Structured outcome & follow-up', rows: [['First RAVC treatment', o.firstTreatment || 'Unknown'], ['Wound present', o.wound], ['Initial wound severity', o.severity], ['Healing', o.healing.status + (o.healing.status === 'healed' ? ' · ' + (o.healing.precision === 'exact' ? o.healing.date : o.healing.precision === 'interval' ? o.healing.from + ' to ' + o.healing.to : 'Date unknown') : '')], ...o.followups.map(f => [f.date, 'Sequelae: ' + (f.assessment === 'assessed' ? f.sequelae.join(', ') : f.assessment) + ' · healing: ' + f.healing + ' · recurrence: ' + f.recurrence] as [string, string])] }); }
     const events = r.events.filter(e => sections.includes(e.type === 'Injection' || e.type === 'History' ? 1 : e.type === 'Investigation' ? 3 : e.type === 'Treatment' ? 5 : 6)).sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
     if (events.length)
         result.push({ title: 'History & management timeline', rows: events.map(e => [`${e.datePrecision === 'unknown' ? 'Date unknown' : e.date} · ${e.type}`, scrub(`${e.title}\n${e.details}${e.amount ? '\nAmount: ' + e.amount + ' ' + e.unit : ''}${e.response ? '\nResponse: ' + e.response : ''}`)]) });
@@ -47,8 +48,9 @@ export async function clinicalPdf(model: ExportModel, settings: ClinicalSettings
         let line = '';
         for (const ch of Array.from(para)) {
             if (font.widthOfTextAtSize(line + ch, size) > width && line) {
-                lines.push(line);
-                line = ch;
+                const space = line.lastIndexOf(' ');
+                if (space > line.length * .3) { lines.push(line.slice(0, space)); line = line.slice(space + 1) + ch; }
+                else { lines.push(line); line = ch; }
             }
             else
                 line += ch;

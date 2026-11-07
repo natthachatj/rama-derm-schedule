@@ -96,3 +96,93 @@ After deploying this branch and checking both pages without signing in, set Goog
 Keep the existing app name, support email, developer contact and authorized app domain. Do not replace the authorized domain with `netlify.app`. Save and resolve any field-level errors, then return to Audience → Publish app. If Google requires brand/domain or data-access verification, follow the displayed requirements; these pages do not establish verification or guarantee publication. There is no terms-of-service page in this change; do not use an unrelated or nonexistent URL if Google requests one. Publishing OAuth does not publish clinical records or change app authorization.
 
 Historical imports use bounded retries with short exponential backoff only for explicit Google 429 responses. If rate limiting persists or Google asks for a longer delay, the app tells the owner to wait at least 60 seconds and generate a new preview. Network errors and other uncertain write failures are not automatically retried. The new preview detects already completed rows after an interrupted request. Imports never create Drive folders.
+
+## Clinical dashboard and research workspace (form v2)
+
+The owner-only Dashboard & research tab provides demographics and clinical distributions,
+calendar-year/custom first-visit date ranges, persisted chart visibility preferences (no clinical
+answers in localStorage), chart-to-case drilldown and a collapsed advanced field-analysis view.
+Case listings return age/sex, complication, material, area, treatment, outcome, visit and
+follow-up summaries only to the clinical owner. Fellow list responses remain receipts.
+
+Outcome & follow-up is a dedicated form step. The optional structured `outcomes` object is
+stored with existing record JSON in Registry Records and immutable revision rows. No original
+Google response columns are changed. Older answers remain intact; no historical healing,
+sex, first-treatment date, severity or sequelae is inferred. RAVC sex is a new optional extra
+field. Editing a record upgrades its current form version while its audit history retains prior
+versions. New structured outcomes also appear in information-only case exports.
+
+### Finalized definitions
+
+- Unit: one complication episode. Explicit links form transitive episode groups; HN equality
+  alone never merges episodes. Combined summaries count linked records once, retaining all
+  shared-field values. Conflicting scalar demographics/endpoints need review.
+- Date filter: earliest valid first RAMA/RAVC visit in the linked episode; inclusive date limits.
+  Unknown visit dates remain in all-time summaries, but are excluded when a date bound is used.
+- Wound healing: complete epithelialization with no remaining open wound; time zero is first
+  RAVC treatment, explicitly entered. Nodule resolution remains separate.
+- Primary sequelae: closest *assessed* visit to day 90, within days 60–120 after first RAVC
+  treatment; ties use the earlier visit. No qualifying visit is missing, never an absent event.
+- Sequelae are individually recorded: None, Scarring, Pigmentation, Tissue loss, Functional
+  impairment, Other. Unknown/not assessed are distinct from None and not applicable.
+- Approval, processing and follow-up completeness remain independent states.
+
+### Guided analysis
+
+Question → cohort → outcome/factors → data readiness → results. Descriptive summaries provide
+counts, denominators, missing-state breakdowns, mean/sample SD, median, interpolated quartiles
+and range. Group comparisons provide Wilson 95% proportion intervals, two-sided Fisher exact
+for exactly two groups and Newcombe–Wilson confidence intervals for differences. Groups must
+be unambiguous; treatment groups describe the recorded regimen rather than implying comparable
+clinical indications. Multiple exploratory comparisons are not multiplicity-adjusted.
+
+The wound-healing path uses Kaplan–Meier estimates with log-log Greenwood intervals. Exact
+healing dates are events. Last explicitly confirmed unhealed follow-up is the censoring date.
+Interval-known healing is retained in the registry but excluded from this exact-date estimator;
+it is never replaced by a midpoint or upper-bound event date. Unadjusted group curves and a
+two-group log-rank test are available when group membership and test variance are estimable. Non-informative censoring is an
+assumption, not a verified fact. At-risk counts, events, censored counts and exclusions are shown.
+
+Adjusted associations use an optional, clinically selected logistic model of three-month sequelae.
+Current supported factors are age (per year), treatment delay (per day, known symptom-onset to
+first RAVC treatment), and clinical wound severity (ordinal mild/moderate/severe). No automatic
+p-value selection. Complete-case analysis only; no missing-value imputation. At least 30 complete
+episodes and at least 10 observations in each outcome category per selected factor are required.
+Constant/collinear predictors, nonconvergence, separation and unstable estimates are withheld.
+This conservative gate is not proof of model adequacy. Ordinal/linear assumptions, missing-data
+bias, referral selection, confounding and clinical severity definitions and within-patient episode clustering require statistical review
+before publication. Models do not establish causation, incidence or treatment effectiveness.
+
+### Saved analyses and exports
+
+Explicit owner action Save analysis & fixed snapshot creates the supporting `Registry Research`
+tab in the existing RAVC spreadsheet if absent, then appends an immutable JSON snapshot with
+config, calculation version, aggregate results, source record IDs/revisions, creation time and actor.
+This uses the existing Sheets connection; no additional service or clinical database. Reads do not
+create the tab. UUID retries reuse the existing snapshot. There are no Drive folder operations.
+Snapshots can be reopened as fixed results or their settings reused with current records. The
+Refresh results action switches to current data and never rewrites a saved snapshot.
+
+Research PDF, editable PPTX and CSV exports are owner-only backend requests. Saved snapshots
+export their stored aggregates; live exports are recomputed server-side. Aggregate category labels
+are allowlisted from standard clinical choices; nonstandard/free-text labels become anonymous
+Other category codes. Names, HN, product brands, source IDs, folder links, notes, snapshot names
+and individual records are excluded. Small groups still require disclosure review. PDF/PPTX include
+methods; charts are native PDF vectors and editable PowerPoint charts/lines. CSV cells are quoted
+and spreadsheet-formula prefixes escaped. No patient data is sent to an AI provider.
+
+### Manual Drive folder links
+
+Owners may link an existing submitted case to a Drive folder. Backend checks role, optimistic
+revision, Google Drive URL/ID syntax, folder type, trash state, owner-only permissions, case marker
+and ancestry within Complications - U/S. The parent itself is rejected. Linking is audited, creates
+no folder and moves no files. A changed folder clears its former PDF reference; a later explicit
+Update Sheet / PDF can write the anonymous PDF in the newly linked folder. Historical cases still
+never create folders automatically. All source resource privacy gates continue to apply.
+
+### Validation
+
+`tests/clinical-research.test.mjs` uses only fictional data and mocked Google requests. It covers
+linked episodes, date bounds, endpoint selection/ties, missingness, impossible outcomes, censoring,
+KM ties, known Fisher/Wilson/summary fixtures, known logistic odds ratios and instability, role
+boundaries, folder ancestry/privacy, snapshot immutability/retries and anonymous export bytes.

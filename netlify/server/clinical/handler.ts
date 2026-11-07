@@ -1,3 +1,7 @@
+import { listResearchSnapshots, saveResearchSnapshot, parseFolderLink, validateCaseFolder } from './research';
+import { researchExport } from '../../../lib/clinical/research-export';
+import { analyze } from '../../../lib/clinical/research';
+import { ZodError } from 'zod';
 import { possibleDuplicates } from '../../../lib/clinical/analytics';
 import { getAuthenticatedUser, siteOrigin } from '../auth';
 import { loadSnapshot } from '../store';
@@ -33,7 +37,7 @@ export async function handleClinical(request: Request) {
             return json({ error: 'Clinical fellow access required.' }, 403);
         if (request.method !== 'GET' && request.headers.get('origin') !== siteOrigin())
             return json({ error: 'Invalid request origin.' }, 403);
-        if (!actor.owner && ['/api/clinical/setup', '/api/clinical/settings', '/api/clinical/history', '/api/clinical/analysis', '/api/clinical/duplicates', '/api/clinical/import', '/api/clinical/export'].includes(url.pathname))
+        if (!actor.owner && ['/api/clinical/setup', '/api/clinical/settings', '/api/clinical/history', '/api/clinical/analysis', '/api/clinical/duplicates', '/api/clinical/import', '/api/clinical/export', '/api/clinical/research'].includes(url.pathname))
             return json({ error: 'Clinical-owner Google access required.' }, 403);
         let body: any = {};
         if (request.method === 'POST') {
@@ -82,6 +86,24 @@ export async function handleClinical(request: Request) {
                 return json({ error: 'Clinical-owner access required.' }, 403);
             return json({ records: (await repo.all()).filter(r => r.status !== 'draft') });
         }
+        if (url.pathname === '/api/clinical/research') {
+            if (!actor.owner || !real || preview) return json({ error: 'Clinical-owner production access required.' }, 403);
+            if (request.method === 'GET') return json({ snapshots: await listResearchSnapshots(real.google) });
+            if (body.action === 'save') return json({ snapshot: await withClinicalLock(async () => saveResearchSnapshot(real.google, await repo.all(), body, actor.principal)) });
+            if (body.action === 'export') {
+                const result = body.snapshotId ? (await listResearchSnapshots(real.google)).find(s => s.id === body.snapshotId)?.result : analyze(await repo.all(), body.config);
+                if (!result) throw Error('Saved analysis not found.');
+                if (!body.snapshotId) {
+                    const versions = (items: { id: string; revision: number }[]) => JSON.stringify(items.map(s => [s.id, s.revision]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+                    if (!Array.isArray(body.sourceVersions) || versions(body.sourceVersions) !== versions(result.sources)) throw Error('Source records changed or export review is stale. Refresh results and review again, or export a fixed snapshot.');
+                }
+                if (body.reviewed !== true) throw Error('Review the anonymous research output before export.');
+                const bytes = await researchExport(result, body.format, await repo.settings());
+                const types: Record<string, string> = { pdf: 'application/pdf', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', csv: 'text/csv; charset=utf-8' };
+                return new Response(bytes as BodyInit, { headers: { 'Content-Type': types[body.format], 'Content-Disposition': `attachment; filename="Registry-research.${body.format}"`, 'Cache-Control': 'no-store' } });
+            }
+            throw Error('Choose a supported research action.');
+        }
         if (url.pathname === '/api/clinical/import') {
             if (!actor.owner || !real)
                 return json({ error: 'Clinical-owner production access required.' }, 403);
@@ -122,6 +144,11 @@ export async function handleClinical(request: Request) {
                     const record = await service.approve(body.id, body.revision);
                     return json({ record });
                 }
+                case 'folder': {
+                    if (!real || !actor.owner) return json({ error: 'Clinical-owner access required.' }, 403);
+                    const folderId = parseFolderLink(body.link);
+                    return json({ record: await service.folder(body.id, body.revision, folderId, (id, caseId) => validateCaseFolder(real.google, id, caseId)) });
+                }
                 case 'retry': return json({ record: await service.process(body.id, body.revision) });
                 case 'deleteDraft': return json(await service.removeDraft(body.id, body.revision));
                 case 'link': return json(await service.link(body.id, body.revision, body.otherId));
@@ -132,6 +159,7 @@ export async function handleClinical(request: Request) {
         return json({ error: 'Clinical route not found.' }, 404);
     }
     catch (e) {
+        if (e instanceof ZodError) return json({ error: e.issues[0]?.message || 'Check the entered information.', validation: e.issues.map(issue => ({ field: issue.path[0] === 'outcomes' ? 'outcomes' : String(issue.path[0]), message: issue.message })) }, 400);
         return json({ error: e instanceof Error ? e.message : 'Clinical service unavailable.', validation: (e as any)?.validation }, 400);
     }
 }

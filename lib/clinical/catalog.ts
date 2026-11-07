@@ -1,7 +1,7 @@
 export type RegistryKind = 'ravc' | 'nodule';
 export const SOURCES = { ravc: { title: 'RAVC complication case', sheetId: '1T9eHLdm84bHKy3uoRY5dsXLEGc_izKhaN3HhtcVd2XI', tab: 'Form Responses 1' }, nodule: { title: 'Injectable-related nodule', sheetId: '13xdpgSqdTvoBkxuYJwYVoMLZRbXXB1KR9sh7SRYNck0', tab: 'Form Responses 1' } } as const;
 export const DRIVE_PARENT = '1fUqfMTRLxfcl_mSKeiLozlNDG1QYWo5P';
-export const FORM_VERSION = 1;
+export const FORM_VERSION = 2;
 export const sectionTitles = ['Patient & referral', 'Injection & history', 'Symptoms & examination', 'Ultrasound', 'Pathology & microbiology', 'Management', 'Follow-up & outcome', 'Other investigations'];
 export type Field = {
     id: string;
@@ -68,6 +68,7 @@ export function fields(kind: RegistryKind): Field[] {
         base.find(f => f.id === 'nodule_CS')!.condition = { field: 'nodule_hyal', values: ['Yes'] };
         base.push({ id: 'nodule_hyal', header: 'Hyaluronidase used', label: 'Hyaluronidase used?', section: 5, type: 'choice', options: yesNo, required: true, extra: true }, { id: 'nodule_hyal_sessions', header: 'Hyaluronidase sessions', label: 'Hyaluronidase sessions', section: 5, type: 'number', min: 0, required: true, extra: true, condition: { field: 'nodule_hyal', values: ['Yes'] } }, { id: 'nodule_hyal_technique', header: 'Hyaluronidase technique', label: 'Hyaluronidase technique', section: 5, type: 'text', required: true, extra: true, condition: { field: 'nodule_hyal', values: ['Yes'] } });
     }
+    if (kind === 'ravc') base.push({ id: 'ravc_sex', header: 'Sex at birth', label: 'Sex at birth', section: 0, type: 'choice', options: ['Female', 'Male', 'Intersex', 'Other'], required: false, extra: true });
     return base;
 }
 export const fieldById = (kind: RegistryKind, id: string) => fields(kind).find(f => f.id === id);

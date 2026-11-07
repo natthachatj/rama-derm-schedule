@@ -1,3 +1,4 @@
+import { caseSummary, text } from './research';
 import { fields, SOURCES, FORM_VERSION, type RegistryKind } from './catalog';
 import { newRecord, validateForm, settingsSchema, defaultSettings, safeReceipt, type CaseRecord, type ClinicalSettings } from './model';
 import type { ClinicalRepository } from './repository';
@@ -28,8 +29,8 @@ export function createClinicalService(ports: ClinicalPorts) {
         if (s.disabledFellows.includes(`${r.year}:${r.fellow}`))
             fail('Clinical submission access is disabled. Contact the clinical owner.');
     } }
-    async function list() { const a = await actor(), rows = await repo.list(); if (a.owner)
-        return rows; return rows.filter(r => a.memberships.some(m => m.year === r.year && m.id === r.fellow)).map(r => ({ id: r.id, kind: r.kind, status: r.status, year: r.year, created: r.created, updated: r.updated, revision: r.revision, processing: r.processing })); }
+    async function list() { const a = await actor(); if (a.owner)
+        return (await repo.all()).map(r => ({ id: r.id, kind: r.kind, owner: r.owner, fellow: r.fellow, year: r.year, status: r.status, revision: r.revision, created: r.created, updated: r.updated, historical: r.historical, processing: r.processing, folderId: r.folderId, summary: caseSummary(r), searchText: [r.id, r.fellow, text(r, r.kind === 'ravc' ? 'ravc_B' : 'nodule_B'), ...Object.values(caseSummary(r))].join(' ') })); const rows = await repo.list(); return rows.filter(r => a.memberships.some(m => m.year === r.year && m.id === r.fellow)).map(r => ({ id: r.id, kind: r.kind, status: r.status, year: r.year, created: r.created, updated: r.updated, revision: r.revision, processing: r.processing })); }
     async function read(id: string) { const a = await actor(); if (!a.owner) {
         const index = (await repo.list()).find(r => r.id === id);
         if (!index || index.status !== 'draft' || !a.memberships.some(m => m.year === index.year && m.id === index.fellow))
@@ -47,7 +48,7 @@ export function createClinicalService(ports: ClinicalPorts) {
         (e as any).validation = errors;
         throw e;
     } if (r.status !== 'draft' && reason.trim().length < 3)
-        fail('Enter a reason for editing this submitted record.'); const next: CaseRecord = { ...r, ...form, revision: r.revision + 1, updated: now(), ...(submit ? { status: 'submitted', submittedAt: now(), processing: 'pending', processingError: undefined } : {}) }; if (r.status !== 'draft')
+        fail('Enter a reason for editing this submitted record.'); const next: CaseRecord = { ...r, ...form, formVersion: FORM_VERSION, revision: r.revision + 1, updated: now(), ...(submit ? { status: 'submitted', submittedAt: now(), processing: 'pending', processingError: undefined } : {}) }; if (r.status !== 'draft')
         next.processing = 'pending'; await repo.put(next, a.principal, submit ? 'Submitted' : r.status === 'draft' ? 'Draft saved' : 'Clinical edit: ' + reason.trim()); return a.owner || !submit ? next : safeReceipt(next); }); }
     async function process(id: string, revision: number) { return ports.lock(async () => { const a = await actor(), r = await repo.get(id); if (!r || r.status === 'draft')
         fail('Submitted case not found.'); if (!a.owner)
@@ -94,5 +95,12 @@ export function createClinicalService(ports: ClinicalPorts) {
         fail('Clinical-owner access required.'); const r = await repo.get(id), other = await repo.get(otherId); if (!r || !other || r.id === other.id || r.status === 'draft' || other.status === 'draft' || r.revision !== revision)
         fail('Choose two existing submitted cases and reload first.'); for (const [x, y] of [[r, other], [other, r]])
         await repo.put({ ...x, linkedCaseIds: [...new Set([...x.linkedCaseIds, y.id])], revision: x.revision + 1, updated: now() }, a.principal, 'Linked clinical episode'); return { linked: true }; }); }
-    return { list, read, create, save, process, processSubmission, approve, history, settings, formOptions, removeDraft, link };
+    async function folder(id: string, revision: number, folderId: string, validate: (id: string, caseId: string) => Promise<void>) { return ports.lock(async () => {
+        const a = await actor(); if (!a.owner) fail('Clinical-owner access required.');
+        const r = await repo.get(id); if (!r || r.status === 'draft' || r.revision !== revision) fail('Reload the submitted case before linking a folder.');
+        await validate(folderId, id);
+        const next = { ...r, folderId, pdfId: r.folderId === folderId ? r.pdfId : undefined, revision: r.revision + 1, updated: now() };
+        await repo.put(next, a.principal, 'Owner linked an existing private case folder'); return next;
+    }); }
+    return { folder, list, read, create, save, process, processSubmission, approve, history, settings, formOptions, removeDraft, link };
 }

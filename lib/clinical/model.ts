@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { outcomesSchema } from './outcomes';
 import { fields, FORM_VERSION, type RegistryKind, type Field } from './catalog';
 export const answerStates = ['recorded', 'none', 'unknown', 'not_assessed', 'not_applicable', 'not_recorded'] as const;
 export const stateLabels: Record<string, string> = { recorded: 'Recorded', none: 'None', unknown: 'Unknown', not_assessed: 'Not assessed', not_applicable: 'Not applicable', not_recorded: 'Not recorded' };
@@ -6,7 +7,7 @@ export const answerSchema = z.object({ state: z.enum(answerStates), value: z.uni
 export type Answer = z.infer<typeof answerSchema>;
 export const eventSchema = z.object({ id: z.string().uuid(), type: z.enum(['Injection', 'History', 'Investigation', 'Treatment', 'Follow-up']), date: z.string().max(10), datePrecision: z.enum(['day', 'month', 'year', 'unknown']), title: z.string().trim().min(1).max(160), details: z.string().max(6000), amount: z.string().max(100).optional(), unit: z.string().max(40).optional(), response: z.string().max(2000).optional() });
 export type CaseEvent = z.infer<typeof eventSchema>;
-export const formSchema = z.object({ kind: z.enum(['ravc', 'nodule']), answers: z.record(answerSchema), events: z.array(eventSchema).max(150) });
+export const formSchema = z.object({ kind: z.enum(['ravc', 'nodule']), answers: z.record(answerSchema), events: z.array(eventSchema).max(150), outcomes: outcomesSchema.optional() });
 export type CaseForm = z.infer<typeof formSchema>;
 export type CaseRecord = CaseForm & {
     id: string;
@@ -93,6 +94,7 @@ export function validateForm(input: unknown, submit = false) {
     const injection = get(f.kind === 'ravc' ? 'ravc_O' : 'nodule_J'), visit = get(f.kind === 'ravc' ? 'ravc_Q' : 'nodule_K');
     if (injection && visit && injection.slice(0, 10) > visit.slice(0, 10))
         errors.push({ field: f.kind === 'ravc' ? 'ravc_Q' : 'nodule_K', message: 'First RAMA/RAVC visit cannot precede the recorded injection date. Check the dates.' });
+    if (f.outcomes?.firstTreatment) { const onset = get(f.kind === 'ravc' ? 'ravc_P' : 'nodule_AB').slice(0, 10); if (validDay(onset) && f.outcomes.firstTreatment < onset) errors.push({ field: 'outcomes', message: 'First RAVC treatment cannot precede symptom onset. Check the dates.' }); }
     return { form: f, errors };
 }
 export function validDay(date: string) { return /^\d{4}-\d{2}-\d{2}$/.test(date) && !isNaN(Date.parse(date)) && new Date(date + 'T12:00Z').toISOString().slice(0, 10) === date; }
