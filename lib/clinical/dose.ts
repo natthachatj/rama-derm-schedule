@@ -19,7 +19,7 @@ export function recoverHistoricalDose(record: CaseRecord): CaseRecord | null {
 }
 export function treatmentDoseTotals(events: CaseEvent[]) {
  const totals = new Map<string,{agent:string;unit:string;amount:number}>(); let incomplete = 0;
- for (const e of events.filter(e=>e.type==='Treatment' && e.amount?.trim())) {
+ for (const e of events.filter(e=>e.type==='Treatment' && e.category!=='medication' && e.amount?.trim())) {
   const n=Number(e.amount); if (!e.agent?.trim() || !e.unit?.trim() || ['Other','Multiple agents: see treatment events'].includes(e.unit.trim()) || !Number.isFinite(n) || n<0) { incomplete++; continue; }
   const agent=e.agent.trim(),unit=e.unit.trim(),key=JSON.stringify([agent.toLowerCase(),unit.toLowerCase()]);
   const item=totals.get(key)||{agent,unit,amount:0};item.amount+=n;totals.set(key,item);

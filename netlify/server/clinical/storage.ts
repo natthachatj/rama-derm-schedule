@@ -1,3 +1,5 @@
+import {syncIATabs,iaSummaryHeaders,iaSummary} from './intraarterial-sheet';
+import {decimal} from '../../../lib/clinical/intraarterial';
 import { doseIds, doseHeaders } from '../../../lib/clinical/dose';
 import { getStore } from '@netlify/blobs';
 import { GoogleClient } from './google';
@@ -5,7 +7,7 @@ import { SOURCES, column, fields, type RegistryKind, type Field } from '../../..
 import { answerText, defaultSettings, type CaseRecord, type ClinicalSettings } from '../../../lib/clinical/model';
 import type { ClinicalRepository, RecordIndex } from '../../../lib/clinical/repository';
 export const quantityHeaders=(f:Field)=>[f.header+' — unit',...(f.range?[f.header+' — upper count']:[]),f.header+' — notes'];
-export const sourceValue=(f:Field,a?:CaseRecord['answers'][string])=>f.type==='number'&&a?.state==='recorded'&&!Array.isArray(a.value)?a.value:answerText(a);
+export const sourceValue=(f:Field,a?:CaseRecord['answers'][string])=>f.type==='number'?(a?.state==='recorded'&&!Array.isArray(a.value)&&decimal(a.value)?Number(a.value):a?.state==='recorded'?answerText(a):''):answerText(a);
 export const structuredHeaders=['Registry Structured Answers','Registry Structured Answers 2','Registry Structured Answers 3','Registry Structured Answers 4'];
 const INDEX = ['Record ID', 'Owner principal', 'Cohort', 'Status', 'Revision', 'Form version', 'Created', 'Updated', 'Index JSON', 'Data 1', 'Data 2', 'Data 3', 'Data 4'];
 const quote = (s: string) => "'" + s.replace(/'/g, "''") + "'";
@@ -93,7 +95,7 @@ export class SheetsRepository implements ClinicalRepository {
     async settings() { const row = (await this.google.values(SOURCES.ravc.sheetId, "'Registry Settings'!A2:B2"))[0]; return row?.[1] ? { ...defaultSettings, ...JSON.parse(row[1]) } : structuredClone(defaultSettings); }
     async saveSettings(settings: ClinicalSettings) { await this.google.update(SOURCES.ravc.sheetId, "'Registry Settings'!A2:B2", [['settings', JSON.stringify(settings)]]); }
     async sourceHeaders(kind: RegistryKind) { return (await this.google.values(SOURCES[kind].sheetId, quote(SOURCES[kind].tab) + '!1:1'))[0] as string[] || []; }
-    async synchronize(r: CaseRecord) { const kind = r.kind, id = SOURCES[kind].sheetId, headers = await this.ensureStructuredHeaders(kind), idColumn = headers.indexOf(registryIdHeader); if (idColumn < 0)
+    async synchronize(r: CaseRecord) { await syncIATabs(this.google,r); const kind = r.kind, id = SOURCES[kind].sheetId, headers = await this.ensureStructuredHeaders(kind), idColumn = headers.indexOf(registryIdHeader); if (idColumn < 0)
         throw Error('Registry Record ID column is missing. Review setup first.'); const sourceRows = await this.google.values(id, `${quote(SOURCES[kind].tab)}!A2:${column(idColumn)}`); const matches = sourceRows.flatMap((row: any[], i: number) => row[idColumn] === r.id ? [i + 2] : []); if (matches.length > 1)
         throw Error('Duplicate source ID. Resolve this in the spreadsheet before retrying.'); if (!matches.length) {
         const values = Array(headers.length).fill('');
@@ -106,8 +108,9 @@ export class SheetsRepository implements ClinicalRepository {
             values[at] = sourceValue(field,a);
             if(field.type==='number'){const companion=[a?.unit||field.unit||'',...(field.range?[a?.upper||'']:[]),a?.details||''];quantityHeaders(field).forEach((h,i)=>values[headers.indexOf(h)]=companion[i]);}
         }
-        const structured=JSON.stringify(r.answers);if(structured.length>170000)throw Error('Structured answers exceed the spreadsheet capacity.');
+        const structured=JSON.stringify({...r.answers,...(r.intraarterial?{__intraarterial:r.intraarterial}:{})});if(structured.length>170000)throw Error('Structured answers exceed the spreadsheet capacity.');
         structuredHeaders.forEach((h,i)=>values[headers.indexOf(h)]=structured.slice(i*44000,(i+1)*44000));
+        if(kind==='ravc')iaSummaryHeaders.forEach((h,i)=>values[headers.indexOf(h)]=iaSummary(r)[i]);
         values[idColumn] = r.id;
         const timestamp = headers.indexOf('Timestamp');
         if (timestamp >= 0)
@@ -123,14 +126,14 @@ export class SheetsRepository implements ClinicalRepository {
         const a = r.answers[field.id];
         writes.push({ range: `${quote(SOURCES[kind].tab)}!${column(at)}${rowNumber}`, values: [[sourceValue(field,a)]] });
         if(field.type==='number'){const companion=[a?.unit||field.unit||'',...(field.range?[a?.upper||'']:[]),a?.details||''];quantityHeaders(field).forEach((h,i)=>writes.push({range:`${quote(SOURCES[kind].tab)}!${column(headers.indexOf(h))}${rowNumber}`,values:[[companion[i]]]}));}
-    } const structured=JSON.stringify(r.answers);if(structured.length>170000)throw Error('Structured answers exceed the spreadsheet capacity.'); structuredHeaders.forEach((h,i)=>writes.push({range:`${quote(SOURCES[kind].tab)}!${column(headers.indexOf(h))}${rowNumber}`,values:[[structured.slice(i*44000,(i+1)*44000)]]})); writes.push({ range: `${quote(SOURCES[kind].tab)}!${column(idColumn)}${rowNumber}`, values: [[r.id]] }); if (!r.historical) {
+    } if(kind==='ravc')iaSummaryHeaders.forEach((h,i)=>writes.push({range:`${quote(SOURCES[kind].tab)}!${column(headers.indexOf(h))}${rowNumber}`,values:[[iaSummary(r)[i]]]})); const structured=JSON.stringify({...r.answers,...(r.intraarterial?{__intraarterial:r.intraarterial}:{})});if(structured.length>170000)throw Error('Structured answers exceed the spreadsheet capacity.'); structuredHeaders.forEach((h,i)=>writes.push({range:`${quote(SOURCES[kind].tab)}!${column(headers.indexOf(h))}${rowNumber}`,values:[[structured.slice(i*44000,(i+1)*44000)]]})); writes.push({ range: `${quote(SOURCES[kind].tab)}!${column(idColumn)}${rowNumber}`, values: [[r.id]] }); if (!r.historical) {
         const timestamp = headers.indexOf('Timestamp');
         if (timestamp >= 0)
             writes.push({ range: `${quote(SOURCES[kind].tab)}!${column(timestamp)}${rowNumber}`, values: [[r.submittedAt || r.created]] });
     } await this.google.request(`sheets/v4/spreadsheets/${id}/values:batchUpdate`, 'POST', { valueInputOption: 'RAW', data: writes }); }
     async ensureStructuredHeaders(kind:RegistryKind) {
         const id=SOURCES[kind].sheetId, headers=await this.sourceHeaders(kind);
-        const expected=[...fields(kind).filter(f=>f.extra).map(f=>f.header),...fields(kind).filter(f=>f.type==='number').flatMap(quantityHeaders),...structuredHeaders];
+        const expected=[...(kind==='ravc'?iaSummaryHeaders:[]),...fields(kind).filter(f=>f.extra).map(f=>f.header),...fields(kind).filter(f=>f.type==='number').flatMap(quantityHeaders),...structuredHeaders];
         const missing=expected.filter(h=>!headers.includes(h));
         if(!missing.length)return headers;
         const meta=await this.google.request(`sheets/v4/spreadsheets/${id}?fields=sheets(properties)`), source=meta.sheets.find((s:any)=>s.properties.title===SOURCES[kind].tab);

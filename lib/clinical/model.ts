@@ -1,3 +1,4 @@
+import {iaSchema, iaErrors, decimal} from './intraarterial';
 import { z } from 'zod';
 import { conditionMet, malformed, chronology, reviewIssues, retainedText } from './review';
 import { outcomesSchema } from './outcomes';
@@ -6,9 +7,9 @@ export const answerStates = ['recorded', 'none', 'unknown', 'not_assessed', 'not
 export const stateLabels: Record<string, string> = { recorded: 'Recorded', none: 'None', unknown: 'Unknown', not_assessed: 'Not assessed', not_applicable: 'Not applicable', not_recorded: 'Not recorded' };
 export const answerSchema = z.object({ state: z.enum(answerStates), value: z.union([z.string().max(6000), z.array(z.string().max(300)).max(30)]).default(''), precision: z.enum(['day', 'minute']).optional(), unit:z.string().max(40).optional(), upper:z.string().max(40).optional(), details:z.string().max(2000).optional(), sequenceException:z.string().max(1500).optional(), corrected:z.boolean().optional() });
 export type Answer = z.infer<typeof answerSchema>;
-export const eventSchema = z.object({ id: z.string().uuid(), type: z.enum(['Injection', 'History', 'Investigation', 'Treatment', 'Follow-up']), date: z.string().max(10), datePrecision: z.enum(['day', 'month', 'year', 'unknown']), title: z.string().trim().min(1).max(160), details: z.string().max(6000), amount: z.string().max(100).optional(), unit: z.string().max(40).optional(), response: z.string().max(2000).optional(), agent:z.string().max(120).optional(), route:z.string().max(120).optional() });
+export const eventSchema = z.object({ id: z.string().uuid(), type: z.enum(['Injection', 'History', 'Investigation', 'Treatment', 'Follow-up']), date: z.string().max(10), datePrecision: z.enum(['day', 'month', 'year', 'unknown']), title: z.string().trim().min(1).max(160), details: z.string().max(6000), amount: z.string().max(100).optional(), unit: z.string().max(40).optional(), response: z.string().max(2000).optional(), agent:z.string().max(120).optional(), route:z.string().max(120).optional(), category:z.enum(['medication','procedure','dissolution','injection']).optional(), material:z.string().max(120).optional(),brand:z.string().max(120).optional(),frequency:z.string().max(120).optional(), duration:z.string().max(40).optional(), durationUnit:z.enum(['days','weeks','months','years']).optional() });
 export type CaseEvent = z.infer<typeof eventSchema>;
-export const formSchema = z.object({ kind: z.enum(['ravc', 'nodule']), answers: z.record(answerSchema), events: z.array(eventSchema).max(150), outcomes: outcomesSchema.optional() });
+export const formSchema = z.object({ kind: z.enum(['ravc', 'nodule']), answers: z.record(answerSchema), events: z.array(eventSchema).max(150), intraarterial: iaSchema.optional(), outcomes: outcomesSchema.optional() });
 export type CaseForm = z.infer<typeof formSchema>;
 export type CaseRecord = CaseForm & {
     id: string;
@@ -54,8 +55,8 @@ export const answerText = (a?: Answer):string => {
  const value=a.state==='recorded'?(Array.isArray(a.value)?a.value.join(', '):a.value)+(a.upper?'–'+a.upper:'')+(a.unit?' '+a.unit:''):stateLabels[a.state];
  return value+(retainedText(a)?' · Retained saved text: '+retainedText(a):'')+(a.details?' · '+a.details:'');
 };
-export function visible(f: Field, answers: Record<string, Answer>) {return !f.system&&(conditionMet(f,answers)||!!retainedText(answers[f.id]).trim()||answers[f.id]?.state==='recorded' && (Array.isArray(answers[f.id].value)?answers[f.id].value.length>0:!!String(answers[f.id].value).trim()));}
-export function validateForm(input: unknown, submit = false, extraChoices:Record<string,string[]> = {}) {
+export function visible(f: Field, answers: Record<string, Answer>) {return !f.system&&(answers[f.id]?.state==='recorded'&&f.type==='number'||!!answers[f.id]?.details?.trim()||conditionMet(f,answers)||!!retainedText(answers[f.id]).trim()||answers[f.id]?.state==='recorded' && (Array.isArray(answers[f.id].value)?answers[f.id].value.length>0:!!String(answers[f.id].value).trim()));}
+export function validateForm(input: unknown, submit = false, extraChoices:Record<string,string[]> = {}, historical = false) {
     const f = formSchema.parse(input), allowed = new Set(fields(f.kind).filter(x => !x.system).map(x => x.id));
     for (const k of Object.keys(f.answers))
         if (!allowed.has(k))
@@ -64,6 +65,8 @@ export function validateForm(input: unknown, submit = false, extraChoices:Record
         field: string;
         message: string;
     }[] = [];
+    if(f.kind==='ravc') for(const message of iaErrors(f.intraarterial,submit,historical))errors.push({field:'intraarterial',message});
+    else if(f.intraarterial)errors.push({field:'intraarterial',message:'Intraarterial records belong to the RAVC registry.'});
     for (const field of fields(f.kind)) {
         if (!visible(field, f.answers))
             continue;
@@ -99,11 +102,14 @@ export function validateForm(input: unknown, submit = false, extraChoices:Record
         }
         else if (!(e.datePrecision === 'day' ? /^\d{4}-\d{2}-\d{2}$/.test(e.date) && validDay(e.date) : e.datePrecision === 'month' ? /^\d{4}-(0[1-9]|1[0-2])$/.test(e.date) : /^\d{4}$/.test(e.date)))
             errors.push({ field: 'events', message: `${e.title}: date does not match its precision.` });
-        if (e.amount && (!Number.isFinite(Number(e.amount)) || Number(e.amount) < 0))
+        if (e.amount && (!decimal(e.amount) || Number(e.amount) < 0))
             errors.push({ field: 'events', message: `${e.title}: enter a nonnegative numerical amount.` });
+        if(e.duration&&(!decimal(e.duration)||Number(e.duration)<0||!e.durationUnit))errors.push({field:'events',message:e.title+': enter a numerical duration and unit.'});
+        if(submit&&e.category==='medication'&&(!e.agent?.trim()||!e.amount||!e.unit||!e.route||!e.frequency||!e.duration||!e.durationUnit))errors.push({field:'events',message:e.title+': complete medication, dose, unit, route, frequency and duration.'});
         if (e.amount && !e.unit)
             errors.push({ field: 'events', message: `${e.title}: add a dose/amount unit.` });
     }
+    if(submit){const status=f.answers[f.kind+'_medical_status'];if(status?.state==='recorded'&&status.value==='Performed'&&!f.events.some(e=>e.category==='medication'))errors.push({field:'events',message:'Add a structured medication entry for prescribed medical treatment.'});}
     const get = (k: string) => { const a = f.answers[k]; return a?.state === 'recorded' && typeof a.value === 'string' ? a.value : ''; };
     if (f.outcomes?.firstTreatment) { const onset = get(f.kind === 'ravc' ? 'ravc_P' : 'nodule_AB').slice(0, 10); if (validDay(onset) && f.outcomes.firstTreatment < onset) errors.push({ field: 'outcomes', message: 'First RAVC treatment cannot precede symptom onset. Check the dates.' }); }
     return { form: f, errors };

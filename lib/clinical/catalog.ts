@@ -1,7 +1,7 @@
 export type RegistryKind = 'ravc' | 'nodule';
 export const SOURCES = { ravc: { title: 'RAVC complication case', sheetId: '1T9eHLdm84bHKy3uoRY5dsXLEGc_izKhaN3HhtcVd2XI', tab: 'Form Responses 1' }, nodule: { title: 'Injectable-related nodule', sheetId: '13xdpgSqdTvoBkxuYJwYVoMLZRbXXB1KR9sh7SRYNck0', tab: 'Form Responses 1' } } as const;
 export const DRIVE_PARENT = '1fUqfMTRLxfcl_mSKeiLozlNDG1QYWo5P';
-export const FORM_VERSION = 4;
+export const FORM_VERSION = 5;
 export const sectionTitles = ['Patient & referral', 'Injection & history', 'Symptoms & examination', 'Ultrasound', 'Pathology & microbiology', 'Management', 'Follow-up & outcome', 'Other investigations'];
 export type Field = {
     id: string;
@@ -129,6 +129,49 @@ function configureFields(kind: RegistryKind, base: Field[]) {
   find('W').help='Prior or coexisting products can be recorded even when no prior filler is confirmed.';find('W').condition=undefined;
   find('hyal').required=true;
  }
+
+ const condition=(id:string,parent:string,values:string[])=>{find(id).condition={field:kind+'_'+parent,values};};
+ const gate=(id:string,label:string,section:number)=>add(id,label,section,'choice',['Performed','Not performed'],true);
+ const numeric=(id:string,label:string,section:number,unit:string,integer=false)=>Object.assign(add(id,label,section,'number',undefined,true),{unit,integer});
+ if(kind==='ravc'){
+  for(const [prefix,count] of [['dissolution','AE'],['led','AF'],['hbot','AG']]){
+   const enabled=['Performed','Ongoing'];
+   for(const id of [count,prefix+'_days',prefix+'_notes',...(prefix==='hbot'?[prefix+'_hours']:prefix==='dissolution'?[prefix+'_cycles','AC','AB','AD','dissolution_total']:[])])condition(id,prefix+'_status',enabled);
+  }
+  find('dissolution_total').required=true;
+  find('AF').label='Total LED sessions';find('AG').label='Total HBOT sessions';
+  find('AE').label='Total filler dissolution sessions';
+  find('M').label='Original injection description';find('M').required=false;
+  add('injection_site','Injection site',1,'multi',regions,true);
+  add('injection_technique','Injection technique',1,'multi',['Needle','Cannula','Bolus','Linear threading','Fanning','Other'],true);
+  add('injection_plane','Injection plane',1,'multi',['Intradermal','Subdermal','Subcutaneous','Supraperiosteal','Intramuscular','Other'],true);
+  Object.assign(numeric('injection_amount','Injected product amount',1,'mL'),{units:['mL','mg','threads','Other'],unit:undefined});
+  gate('medical_status','Medical treatment status',5);condition('AH','medical_status',['Performed']);find('AH').required=false;find('AH').label='Original medication description';
+ }else{
+  find('AW').label='Original ultrasound dimensions description';find('AW').required=false;
+  numeric('us_length','Ultrasound lesion length',3,'cm');numeric('us_width','Ultrasound lesion width',3,'cm');
+  find('CY').label='Original time-to-resolution description';find('CY').required=false;
+  Object.assign(numeric('resolution_duration','Time to resolution',6,'days'),{units:['days','weeks','months','years'],unit:undefined});condition('resolution_duration','CV',['Resolved','Complete resolution']);
+  gate('medical_status','Medical treatment status',5);for(const id of ['CL','CM','CN'])condition(id,'medical_status',['Performed']);find('CL').required=false;find('CL').label='Original medication description';
+  gate('procedure_status','Procedural treatment status',5);for(const id of ['CO','CP','CQ','CR'])condition(id,'procedure_status',['Performed']);
+  condition('hyal_sessions','hyal',['Yes']);condition('hyal_technique','hyal',['Yes']);
+  condition('CE','CD',['Positive']);
+  gate('stains_status','Special stains performed?',4);condition('stains_status','BK',['Yes']);
+  add('stains_selected','Select stains performed',4,'multi',['PAS','Ziehl-Neelsen (AFB)','Gram','GMS','Fite','Alcian blue','Other'],true);condition('stains_selected','stains_status',['Performed']);
+  for(const [id,name] of [['BV','PAS'],['BW','Ziehl-Neelsen (AFB)'],['BX','Gram'],['BY','GMS'],['BZ','Fite'],['CA','Alcian blue'],['CB','Other']])condition(id,'stains_selected',[name]);
+  gate('complications_status','Treatment complications present?',6);condition('DC','complications_status',['Performed']);condition('DD','complications_status',['Performed']);find('complications_status').options=['Yes','No'];find('DC').condition!.values=['Yes'];find('DD').condition!.values=['Yes'];
+  gate('imaging_status','Additional imaging performed?',7);for(const id of ['DG','DH'])condition(id,'imaging_status',['Performed']);
+  gate('labs_status','Laboratory investigations performed?',7);for(const id of ['DI','DJ'])condition(id,'labs_status',['Performed']);
+  for(const id of ['T','CR']){find(id).required=false;find(id).label='Original '+(id==='T'?'injection':'ultrasound-guided')+' needle description';}
+ }
+ // Device dimensions are distinct from free-text device descriptions.
+ for(const [id,title,section] of (kind==='ravc'?[['injection','Injection device',1]]:[['injection','Injection device',1],['procedure','Procedure device',5]]) as [string,string,number][]){
+  add(id+'_device',title+' type',section,'choice',['Needle','Cannula','Other'],false);
+  numeric(id+'_gauge',title+' gauge',section,'G');find(id+'_gauge').required=false;find(id+'_gauge').integer=true;
+  numeric(id+'_length',title+' length',section,'mm');find(id+'_length').required=false;
+  if(id==='procedure')for(const suffix of ['device','gauge','length'])condition(id+'_'+suffix,'procedure_status',['Performed']);
+ }
+
  for(const f of base) {
   if(f.type==='number'&&!f.units&&f.unit===undefined) f.help ||= 'Enter a numerical value. Use an explicit information status when unavailable.';
   if(f.id!=='nodule_BF'&&f.type==='choice'&&f.options&&!f.options.includes('Other')&&!['Yes','No'].every(v=>f.options!.includes(v)))f.options.push('Other');

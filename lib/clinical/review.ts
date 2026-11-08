@@ -6,7 +6,7 @@ export const storedText=(a?:Answer)=>!a?'':Array.isArray(a.value)?a.value.join('
 export const retainedText=(a?:Answer)=>a?.state!=='recorded'?storedText(a):'';
 export const meaningfulOriginal=(s:string)=>!!s.trim()&&!/^(none|n\/?a|not applicable|not recorded|unknown|not assessed|-)$/i.test(s.trim());
 export const rawValue=(a?:Answer)=>a?.state==='recorded'?(Array.isArray(a.value)?a.value.join(', '):a.value):'';
-export function conditionMet(f:Field,answers:Record<string,Answer>) {if(!f.condition)return true;const a=answers[f.condition.field];return a?.state==='recorded'&&(f.condition.values.includes('*')||f.condition.values.includes(String(a.value)));}
+export function conditionMet(f:Field,answers:Record<string,Answer>) {if(!f.condition)return true;const a=answers[f.condition.field];return a?.state==='recorded'&&(f.condition.values.includes('*')||(Array.isArray(a.value)?a.value:[String(a.value)]).some(v=>f.condition!.values.includes(v)));}
 export function hasAnswer(a?:Answer){return !!a&&(a.state!=='not_recorded')&&(a.state!=='recorded'||!!rawValue(a).trim());}
 export function validClinicalDay(s:string) {if(!/^\d{4}-\d{2}-\d{2}$/.test(s))return false;const d=new Date(s+'T12:00:00Z');return Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===s&&Number(s.slice(0,4))>=1900&&Number(s.slice(0,4))<=2100;}
 export function malformed(f:Field,a?:Answer):string|undefined {

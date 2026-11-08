@@ -45,7 +45,7 @@ export function createClinicalService(ports: ClinicalPorts) {
         fail('Fellow access required.'); const r = newRecord(kind, a.principal, fellow, year, now()); await checkEnabled(a, r); await repo.put(r, a.principal, 'Draft created'); return r; }); }
     async function save(id: string, revision: number, input: unknown, submit = false, reason = '') { return ports.lock(async () => { const a = await actor(), r = await read(id); if (r.revision !== revision)
         fail('This case changed in another window. Reload before saving.'); if (r.status !== 'draft' && !a.owner)
-        fail('Submitted records are locked.'); const { form, errors } = validateForm(input, submit,(await repo.settings()).extraChoices); if (form.kind !== r.kind)
+        fail('Submitted records are locked.'); const { form, errors } = validateForm(input, submit,(await repo.settings()).extraChoices,r.historical); if (form.kind !== r.kind)
         fail('Cannot change registry type.'); if (errors.length) {
         const e = new Error(errors[0].message);
         (e as any).validation = errors;
@@ -59,13 +59,13 @@ export function createClinicalService(ports: ClinicalPorts) {
         if (!latest || latest.status === 'draft') fail('Choose a submitted case to edit.');
         const candidates = request.baseRevision === latest.revision ? [latest] : (await repo.revisions(id)).filter(r => r.revision === request.baseRevision);
         const base = candidates[0];
-        if (base && candidates.some(r => !same({ kind:r.kind,answers:r.answers,events:r.events,outcomes:r.outcomes }, { kind:base.kind,answers:base.answers,events:base.events,outcomes:base.outcomes }))) fail('The original version has conflicting history entries. Your edits remain on screen; review the saved history before retrying.');
+        if (base && candidates.some(r => !same({ kind:r.kind,answers:r.answers,events:r.events,outcomes:r.outcomes,intraarterial:r.intraarterial }, { kind:base.kind,answers:base.answers,events:base.events,outcomes:base.outcomes,intraarterial:base.intraarterial }))) fail('The original version has conflicting history entries. Your edits remain on screen; review the saved history before retrying.');
         if (!base) fail('The original saved version is unavailable. Your edits remain on screen; do not close this page.');
         const merged = mergeEdit(base, latest, request);
         if (merged.conflict) return { conflict: merged.conflict };
         if (!merged.changed.length) return { record: latest, unchanged: true };
-        const validation = validateForm(merged.record, false,(await repo.settings()).extraChoices), oldErrors = validateForm(latest, false,(await repo.settings()).extraChoices).errors;
-        const touched = new Set(merged.changed.map(k => k.startsWith('answer:') ? k.slice(7) : k.startsWith('event:') ? 'events' : 'outcomes'));
+        const validation = validateForm(merged.record, false,(await repo.settings()).extraChoices,latest.historical), oldErrors = validateForm(latest, false,(await repo.settings()).extraChoices,latest.historical).errors;
+        const touched = new Set(merged.changed.map(k => k.startsWith('answer:') ? k.slice(7) : k==='intraarterial:log'?'intraarterial':k.startsWith('event:') ? 'events' : 'outcomes'));
         const errors = validation.errors.filter(e => touched.has(e.field) || !oldErrors.some(old => old.field === e.field && old.message === e.message));
         if (errors.length) { const e = new Error(errors[0].message); (e as any).validation = errors; throw e; }
         const next: CaseRecord = preserveCorrections(latest, { ...merged.record, ...validation.form, revision: latest.revision + 1, formVersion: FORM_VERSION, updated: now(), processing: 'pending', processingError: undefined });

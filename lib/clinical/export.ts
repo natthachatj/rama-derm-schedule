@@ -1,3 +1,5 @@
+import {iaRows} from './intraarterial';
+import {orderedFields} from './conditional';
 import { reviewIssues, retainedText } from './review';
 import { fields, sectionTitles, SOURCES } from './catalog';
 import { answerText, visible, type CaseRecord, type ClinicalSettings, defaultSettings } from './model';
@@ -16,8 +18,9 @@ export type ExportModel = {
     note: string;
 };
 export function exportModel(r: CaseRecord, anonymous = true, sections: number[] = [0, 1, 2, 3, 4, 5, 6, 7], summary = ''): ExportModel {
-    const all = fields(r.kind), review=reviewIssues(r);
+    const all = orderedFields(r.kind), review=reviewIssues(r);
     const prohibited = all.filter(f => f.private).flatMap(f => { const a = r.answers[f.id]; return [...(a ? (Array.isArray(a.value) ? a.value : [a.value]) : []),...(r.sourceRaw?.[f.header]?[r.sourceRaw[f.header]]:[])]; }).flatMap(v => v.split(/[,;\n]/)).map(v => v.trim()).filter(v => v.length >= 2 && !['Unknown', 'None', 'Not recorded', 'Yes', 'No'].includes(v)).sort((a, b) => b.length - a.length);
+    for(const e of r.events)if(e.brand?.trim())prohibited.push(e.brand.trim());
     const scrub = (s: string) => { if (!anonymous)
         return s; let text = s.replace(/https?:\/\/\S+/gi, '[private link omitted]'); for (const word of prohibited)
         text = text.replace(new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '[omitted]'); return text.replace(/\b(?:HN|patient\s*ID|national\s*ID)\s*[:#=]?\s*[A-Za-z0-9-]+/gi, '[identifier omitted]'); };
@@ -25,10 +28,11 @@ export function exportModel(r: CaseRecord, anonymous = true, sections: number[] 
             string,
             string
         ]) })).filter(s => s.rows.length);
+    if(r.kind==='ravc'&&sections.includes(5))result.push({title:'Intraarterial dissolution',rows:iaRows(r.intraarterial,r.historical).map(([k,v])=>[scrub(k),scrub(v)])});
     if (r.outcomes && sections.includes(6)) { const o = r.outcomes; result.push({ title: 'Structured outcome & follow-up', rows: [['First RAVC treatment', o.firstTreatment || 'Unknown'], ['Wound present', o.wound], ['Initial wound severity', o.severity], ['Healing', o.healing.status + (o.healing.status === 'healed' ? ' · ' + (o.healing.precision === 'exact' ? o.healing.date : o.healing.precision === 'interval' ? o.healing.from + ' to ' + o.healing.to : 'Date unknown') : '')], ...o.followups.map(f => [f.date, 'Sequelae: ' + (f.assessment === 'assessed' ? f.sequelae.join(', ') : f.assessment) + ' · healing: ' + f.healing + ' · recurrence: ' + f.recurrence] as [string, string])] }); }
     const events = r.events.filter(e => sections.includes(e.type === 'Injection' || e.type === 'History' ? 1 : e.type === 'Investigation' ? 3 : e.type === 'Treatment' ? 5 : 6)).sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
     if (events.length)
-        result.push({ title: 'History & management timeline', rows: events.map(e => [`${e.datePrecision === 'unknown' ? 'Date unknown' : e.date} · ${e.type}`, scrub(`${e.title}\n${e.details}${e.agent ? '\nAgent: ' + e.agent : ''}${e.route ? '\nRoute / technique: ' + e.route : ''}${e.amount ? '\nAmount: ' + e.amount + ' ' + e.unit : ''}${e.response ? '\nResponse: ' + e.response : ''}`)]) });
+        result.push({ title: 'History & management timeline', rows: events.map(e => [`${e.datePrecision === 'unknown' ? 'Date unknown' : e.date} · ${e.type}`, scrub(`${e.title}\n${e.details}${e.material?'\nMaterial: '+e.material:''}${!anonymous&&e.brand?'\nBrand: '+e.brand:''}${e.agent ? '\nAgent: ' + e.agent : ''}${e.route ? '\nRoute / technique: ' + e.route : ''}${e.amount ? '\nAmount: ' + e.amount + ' ' + e.unit : ''}${e.frequency?'\nFrequency: '+e.frequency:''}${e.duration?'\nDuration: '+e.duration+' '+e.durationUnit:''}${e.response ? '\nResponse: ' + e.response : ''}`)]) });
     if (summary.trim())
         result.unshift({ title: 'Reviewed case summary', rows: [['Summary', scrub(summary.trim())]] });
     return { title: SOURCES[r.kind].title, code: anonymous ? r.presentationCode : r.id, anonymous, sections: result, note: 'Information only · ' + (r.status === 'approved' ? 'Reviewed by clinical owner' : 'Submitted · clinical owner review pending') + (anonymous ? ' · Review free text before sharing.' : ' · Private patient information. Not for external sharing.') };
