@@ -1,6 +1,7 @@
 import type { CaseRecord, ClinicalSettings } from './model';
 import type { RegistryKind } from './catalog';
 export type RecordIndex = Pick<CaseRecord, 'id' | 'kind' | 'owner' | 'fellow' | 'year' | 'status' | 'revision' | 'created' | 'updated' | 'historical' | 'processing'> & {
+    submittedAt?: string;
     trashedAt?: string;
     searchText?: string;
 };

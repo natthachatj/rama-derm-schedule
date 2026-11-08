@@ -1,3 +1,4 @@
+import {clinicalApprovalItems} from '../priority-inbox';
 import { preserveCorrections, reviewIssues } from './review';
 import { registryValues, caseAttention } from './usability';
 import { editRequestSchema, mergeEdit, auditEdit, same } from './edit';
@@ -33,7 +34,8 @@ export function createClinicalService(ports: ClinicalPorts) {
             fail('Clinical submission access is disabled. Contact the clinical owner.');
     } }
     async function list() { const a = await actor(), choices=a.owner?(await repo.settings()).extraChoices:{}; if (a.owner)
-        return (await repo.all()).map(r => ({ id: r.id, kind: r.kind, owner: r.owner, fellow: r.fellow, year: r.year, status: r.status, revision: r.revision, created: r.created, updated: r.updated, historical: r.historical, remindersHidden:!!r.remindersHidden, processing: r.processing, folderId: r.folderId, trashedAt: r.trashedAt, visitDate: visitDate(r), missingInformation: caseAttention(r), reviewInformation: reviewIssues(r,choices), filterValues: registryValues(r), summary: caseSummary(r), searchText: [r.id, r.fellow, text(r, r.kind === 'ravc' ? 'ravc_B' : 'nodule_B'), ...Object.values(caseSummary(r))].join(' ') })); const rows = await repo.list(); return rows.filter(r => !r.trashedAt && a.memberships.some(m => m.year === r.year && m.id === r.fellow)).map(r => ({ id: r.id, kind: r.kind, status: r.status, year: r.year, created: r.created, updated: r.updated, revision: r.revision, processing: r.processing })); }
+        return (await repo.all()).map(r => ({ id: r.id, kind: r.kind, owner: r.owner, fellow: r.fellow, year: r.year, status: r.status, revision: r.revision, created: r.created, submittedAt:r.submittedAt, updated: r.updated, historical: r.historical, remindersHidden:!!r.remindersHidden, processing: r.processing, folderId: r.folderId, trashedAt: r.trashedAt, visitDate: visitDate(r), missingInformation: caseAttention(r), reviewInformation: reviewIssues(r,choices), filterValues: registryValues(r), summary: caseSummary(r), searchText: [r.id, r.fellow, text(r, r.kind === 'ravc' ? 'ravc_B' : 'nodule_B'), ...Object.values(caseSummary(r))].join(' ') })); const rows = await repo.list(); return rows.filter(r => !r.trashedAt && a.memberships.some(m => m.year === r.year && m.id === r.fellow)).map(r => ({ id: r.id, kind: r.kind, status: r.status, year: r.year, created: r.created, submittedAt:r.submittedAt, updated: r.updated, revision: r.revision, processing: r.processing })); }
+    async function inbox(){const a=await actor();if(!a.owner)fail('Clinical-owner access required.');return clinicalApprovalItems(await repo.list());}
     async function read(id: string) { const a = await actor(); if (!a.owner) {
         const index = (await repo.list()).find(r => r.id === id);
         if (!index || index.trashedAt || index.status !== 'draft' || !a.memberships.some(m => m.year === index.year && m.id === index.fellow))
@@ -146,5 +148,5 @@ export function createClinicalService(ports: ClinicalPorts) {
         await repo.put(next,a.principal,option==='reminders'?(value?'Owner hid card reminders; unresolved issues retained':'Owner restored card reminders'):(value?'Owner marked historical management timeline unavailable':'Owner reopened historical management timeline'));
         return next;
     }); }
-    return { caseOption, edit, folder, list, read, create, save, process, processSubmission, approve, history, settings, formOptions, removeDraft, restoreDraft, link };
+    return { inbox, caseOption, edit, folder, list, read, create, save, process, processSubmission, approve, history, settings, formOptions, removeDraft, restoreDraft, link };
 }

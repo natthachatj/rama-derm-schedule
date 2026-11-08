@@ -37,7 +37,7 @@ export async function handleClinical(request: Request) {
             return json({ error: 'Clinical fellow access required.' }, 403);
         if (request.method !== 'GET' && request.headers.get('origin') !== siteOrigin())
             return json({ error: 'Invalid request origin.' }, 403);
-        if (!actor.owner && ['/api/clinical/setup', '/api/clinical/settings', '/api/clinical/history', '/api/clinical/analysis', '/api/clinical/duplicates', '/api/clinical/import', '/api/clinical/export', '/api/clinical/research'].includes(url.pathname))
+        if (!actor.owner && ['/api/clinical/inbox', '/api/clinical/setup', '/api/clinical/settings', '/api/clinical/history', '/api/clinical/analysis', '/api/clinical/duplicates', '/api/clinical/import', '/api/clinical/export', '/api/clinical/research'].includes(url.pathname))
             return json({ error: 'Clinical-owner Google access required.' }, 403);
         let body: any = {};
         if (request.method === 'POST') {
@@ -63,6 +63,7 @@ export async function handleClinical(request: Request) {
         }
         if (real && (await inspectClinicalPrivacy(real.google)).some(r => !r.privateToOwner))
             return json({ error: 'Clinical access is paused: both response spreadsheets and the parent folder must be private to the clinical owner. Review their Drive sharing settings.' }, 403);
+        if(url.pathname==='/api/clinical/inbox'&&request.method==='GET')return json({items:await service.inbox()});
         if (url.pathname === '/api/clinical/records' && request.method === 'GET')
             return json({ records: await service.list() });
         if (url.pathname === '/api/clinical/record' && request.method === 'GET')
