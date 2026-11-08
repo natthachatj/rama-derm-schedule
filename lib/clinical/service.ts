@@ -33,7 +33,7 @@ export function createClinicalService(ports: ClinicalPorts) {
             fail('Clinical submission access is disabled. Contact the clinical owner.');
     } }
     async function list() { const a = await actor(), choices=a.owner?(await repo.settings()).extraChoices:{}; if (a.owner)
-        return (await repo.all()).map(r => ({ id: r.id, kind: r.kind, owner: r.owner, fellow: r.fellow, year: r.year, status: r.status, revision: r.revision, created: r.created, updated: r.updated, historical: r.historical, processing: r.processing, folderId: r.folderId, trashedAt: r.trashedAt, visitDate: visitDate(r), missingInformation: caseAttention(r), reviewInformation: reviewIssues(r,choices), filterValues: registryValues(r), summary: caseSummary(r), searchText: [r.id, r.fellow, text(r, r.kind === 'ravc' ? 'ravc_B' : 'nodule_B'), ...Object.values(caseSummary(r))].join(' ') })); const rows = await repo.list(); return rows.filter(r => !r.trashedAt && a.memberships.some(m => m.year === r.year && m.id === r.fellow)).map(r => ({ id: r.id, kind: r.kind, status: r.status, year: r.year, created: r.created, updated: r.updated, revision: r.revision, processing: r.processing })); }
+        return (await repo.all()).map(r => ({ id: r.id, kind: r.kind, owner: r.owner, fellow: r.fellow, year: r.year, status: r.status, revision: r.revision, created: r.created, updated: r.updated, historical: r.historical, remindersHidden:!!r.remindersHidden, processing: r.processing, folderId: r.folderId, trashedAt: r.trashedAt, visitDate: visitDate(r), missingInformation: caseAttention(r), reviewInformation: reviewIssues(r,choices), filterValues: registryValues(r), summary: caseSummary(r), searchText: [r.id, r.fellow, text(r, r.kind === 'ravc' ? 'ravc_B' : 'nodule_B'), ...Object.values(caseSummary(r))].join(' ') })); const rows = await repo.list(); return rows.filter(r => !r.trashedAt && a.memberships.some(m => m.year === r.year && m.id === r.fellow)).map(r => ({ id: r.id, kind: r.kind, status: r.status, year: r.year, created: r.created, updated: r.updated, revision: r.revision, processing: r.processing })); }
     async function read(id: string) { const a = await actor(); if (!a.owner) {
         const index = (await repo.list()).find(r => r.id === id);
         if (!index || index.trashedAt || index.status !== 'draft' || !a.memberships.some(m => m.year === index.year && m.id === index.fellow))
@@ -45,7 +45,7 @@ export function createClinicalService(ports: ClinicalPorts) {
         fail('Fellow access required.'); const r = newRecord(kind, a.principal, fellow, year, now()); await checkEnabled(a, r); await repo.put(r, a.principal, 'Draft created'); return r; }); }
     async function save(id: string, revision: number, input: unknown, submit = false, reason = '') { return ports.lock(async () => { const a = await actor(), r = await read(id); if (r.revision !== revision)
         fail('This case changed in another window. Reload before saving.'); if (r.status !== 'draft' && !a.owner)
-        fail('Submitted records are locked.'); const { form, errors } = validateForm(input, submit,(await repo.settings()).extraChoices,r.historical); if (form.kind !== r.kind)
+        fail('Submitted records are locked.'); const { form, errors } = validateForm(input, submit,(await repo.settings()).extraChoices,r.historical,!!r.managementUnavailable); if (form.kind !== r.kind)
         fail('Cannot change registry type.'); if (errors.length) {
         const e = new Error(errors[0].message);
         (e as any).validation = errors;
@@ -59,13 +59,13 @@ export function createClinicalService(ports: ClinicalPorts) {
         if (!latest || latest.status === 'draft') fail('Choose a submitted case to edit.');
         const candidates = request.baseRevision === latest.revision ? [latest] : (await repo.revisions(id)).filter(r => r.revision === request.baseRevision);
         const base = candidates[0];
-        if (base && candidates.some(r => !same({ kind:r.kind,answers:r.answers,events:r.events,outcomes:r.outcomes,intraarterial:r.intraarterial }, { kind:base.kind,answers:base.answers,events:base.events,outcomes:base.outcomes,intraarterial:base.intraarterial }))) fail('The original version has conflicting history entries. Your edits remain on screen; review the saved history before retrying.');
+        if (base && candidates.some(r => !same({ kind:r.kind,answers:r.answers,events:r.events,outcomes:r.outcomes,intraarterial:r.intraarterial,timelineStatus:r.timelineStatus }, { kind:base.kind,answers:base.answers,events:base.events,outcomes:base.outcomes,intraarterial:base.intraarterial,timelineStatus:base.timelineStatus }))) fail('The original version has conflicting history entries. Your edits remain on screen; review the saved history before retrying.');
         if (!base) fail('The original saved version is unavailable. Your edits remain on screen; do not close this page.');
         const merged = mergeEdit(base, latest, request);
         if (merged.conflict) return { conflict: merged.conflict };
         if (!merged.changed.length) return { record: latest, unchanged: true };
         const validation = validateForm(merged.record, false,(await repo.settings()).extraChoices,latest.historical), oldErrors = validateForm(latest, false,(await repo.settings()).extraChoices,latest.historical).errors;
-        const touched = new Set(merged.changed.map(k => k.startsWith('answer:') ? k.slice(7) : k==='intraarterial:log'?'intraarterial':k.startsWith('event:') ? 'events' : 'outcomes'));
+        const touched = new Set(merged.changed.map(k => k.startsWith('answer:') ? k.slice(7) : k==='intraarterial:log'?'intraarterial':(k.startsWith('event:') || k==='timeline:status') ? 'events' : 'outcomes'));
         const errors = validation.errors.filter(e => touched.has(e.field) || !oldErrors.some(old => old.field === e.field && old.message === e.message));
         if (errors.length) { const e = new Error(errors[0].message); (e as any).validation = errors; throw e; }
         const next: CaseRecord = preserveCorrections(latest, { ...merged.record, ...validation.form, revision: latest.revision + 1, formVersion: FORM_VERSION, updated: now(), processing: 'pending', processingError: undefined });
@@ -133,5 +133,18 @@ export function createClinicalService(ports: ClinicalPorts) {
         const next = { ...r, folderId, pdfId: r.folderId === folderId ? r.pdfId : undefined, revision: r.revision + 1, updated: now() };
         await repo.put(next, a.principal, 'Owner linked an existing private case folder'); return next;
     }); }
-    return { edit, folder, list, read, create, save, process, processSubmission, approve, history, settings, formOptions, removeDraft, restoreDraft, link };
+    async function caseOption(id:string, revision:number, option:unknown, value:unknown) { return ports.lock(async()=>{
+        const a=await actor();if(!a.owner)fail('Clinical-owner access required.');
+        if(typeof option!=='string'||!['reminders','managementUnavailable'].includes(option)||typeof value!=='boolean')fail('Invalid case option.');
+        const r=await read(id);if(r.revision!==revision)fail('This case changed. Reload before saving.');
+        if(option==='managementUnavailable'&&!r.historical)fail('This exemption is only available for historical records.');
+        if(option==='reminders'&&!!r.remindersHidden===value || option==='managementUnavailable'&&!!r.managementUnavailable===value)return r;
+        const next=structuredClone(r);
+        if(option==='reminders')next.remindersHidden=value as boolean;
+        else {if(value)next.managementUnavailable={at:now(),actor:a.principal};else delete next.managementUnavailable; if(r.status!=='draft')next.processing='pending';}
+        next.revision++;next.updated=now();
+        await repo.put(next,a.principal,option==='reminders'?(value?'Owner hid card reminders; unresolved issues retained':'Owner restored card reminders'):(value?'Owner marked historical management timeline unavailable':'Owner reopened historical management timeline'));
+        return next;
+    }); }
+    return { caseOption, edit, folder, list, read, create, save, process, processSubmission, approve, history, settings, formOptions, removeDraft, restoreDraft, link };
 }

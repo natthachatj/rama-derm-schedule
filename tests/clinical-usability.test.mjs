@@ -4,13 +4,14 @@ import {build} from 'esbuild';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 const dir=await mkdtemp(new URL('../.auth-test-usability-',import.meta.url));
-await build({entryPoints:['lib/clinical/usability.ts','lib/clinical/dashboard.ts','lib/clinical/service.ts','lib/clinical/model.ts','lib/clinical/research.ts'],outdir:dir,outbase:'.',bundle:true,platform:'node',target:'node22',format:'esm',packages:'external'});
+await build({entryPoints:['lib/clinical/edit.ts','lib/clinical/usability.ts','lib/clinical/dashboard.ts','lib/clinical/service.ts','lib/clinical/model.ts','lib/clinical/research.ts'],outdir:dir,outbase:'.',bundle:true,platform:'node',target:'node22',format:'esm',packages:'external'});
 const load=p=>import(pathToFileURL(`${dir}/lib/clinical/${p}.js`));
 const {caseAttention,sortCaseRows,processingLabel,attention,registryValues,matchesFilters,filterDefinitions}=await load('usability');
 const {dashboardChart,defaultCharts,chartColor}=await load('dashboard');
 const {createClinicalService}=await load('service');
-const {newRecord,defaultSettings}=await load('model');
+const {newRecord,defaultSettings,validateForm}=await load('model');
 const {episodes,defaultResearchConfig}=await load('research');
+const {editChanges,mergeEdit}=await load('edit');
 after(()=>rm(dir,{recursive:true,force:true}));
 const a=value=>({state:'recorded',value});
 function fixture(){let actor={principal:'fellow1',owner:false,memberships:[{id:'f1',year:2026}]},rows=[],writes=[];const repo={list:async()=>structuredClone(rows),all:async()=>structuredClone(rows),get:async id=>structuredClone(rows.find(r=>r.id===id)||null),put:async(r,by,action)=>{rows=rows.filter(x=>x.id!==r.id).concat(structuredClone(r));writes.push({by,action})},settings:async()=>defaultSettings,revisions:async()=>[]};const api=createClinicalService({repository:repo,actor:async()=>actor,lock:async fn=>fn(),process:async r=>r,now:()=> '2026-11-08T06:00:00Z'});return {api,writes,get rows(){return rows},actor:v=>actor=v,owner:()=>actor={principal:'owner',owner:true,memberships:[]},seed:r=>rows.push(r)};}
@@ -50,4 +51,45 @@ test('chronological sorting uses selected dates, unknowns last in both direction
  assert.deepEqual(sortCaseRows(rows,'created','desc').map(r=>r.id),['unknown','b','a','new','bad']);
  assert.deepEqual(rows,original);
  assert.equal(processingLabel('complete'),'Sheet/PDF updated');
+});
+
+test('hiding reminders preserves missing fields, clinical answers, processing and owner-only visibility',async()=>{
+ const f=fixture(),r=await f.api.create('ravc',2026,'f1');await assert.rejects(f.api.caseOption(r.id,0,'reminders',true),/owner/);
+ f.owner();await assert.rejects(f.api.caseOption(r.id,0,['reminders'],true),/Invalid/);await assert.rejects(f.api.caseOption(r.id,0,'reminders','true'),/Invalid/);const before=caseAttention(r);let next=await f.api.caseOption(r.id,0,'reminders',true);
+ assert.equal(next.remindersHidden,true);assert.deepEqual(caseAttention(next),before);assert.deepEqual(next.answers,r.answers);assert.equal(next.processing,'draft');
+ assert.equal((await f.api.list())[0].remindersHidden,true);await assert.rejects(f.api.caseOption(r.id,0,'reminders',false),/changed/);
+ next=await f.api.caseOption(r.id,1,'reminders',false);assert.equal(next.remindersHidden,false);assert.ok(f.writes.some(w=>/hid card reminders/.test(w.action)));
+ f.actor({principal:'fellow1',owner:false,memberships:[{id:'f1',year:2026}]});assert.equal((await f.api.list())[0].remindersHidden,undefined);
+});
+test('historical timeline waiver is owner-only, reversible and audited; never allowed on new records',async()=>{
+ const f=fixture(),r={...newRecord('ravc','owner','historical',2026),historical:true,status:'submitted'};f.seed(r);
+ await assert.rejects(f.api.caseOption(r.id,0,'managementUnavailable',true),/owner/);f.owner();
+ const newCase=await f.api.create('ravc',2026,'f1');await assert.rejects(f.api.caseOption(newCase.id,0,'managementUnavailable',true),/historical/);
+ assert.ok(caseAttention(r).some(i=>i.field==='events'));
+ let next=await f.api.caseOption(r.id,0,'managementUnavailable',true);assert.deepEqual(next.events,[]);assert.equal(next.timelineStatus,undefined);assert.equal(next.managementUnavailable.actor,'owner');
+ assert.ok(!caseAttention(next).some(i=>i.field==='events'));assert.equal(next.processing,'pending');
+ next=await f.api.caseOption(r.id,1,'managementUnavailable',false);assert.equal(next.managementUnavailable,undefined);assert.ok(caseAttention(next).some(i=>i.field==='events'));
+ assert.ok(f.writes.some(w=>/historical management timeline unavailable/.test(w.action)));
+});
+test('management requirement accepts actual treatment or explicit no treatment; exemptions never hide invalid entries',()=>{
+ const r=newRecord('nodule','owner','f1',2026),missing=f=>validateForm(f,true).errors.filter(e=>e.field==='events');
+ assert.ok(missing(r).length);r.timelineStatus='none';assert.equal(missing(r).length,0);
+ r.events=[{id:crypto.randomUUID(),type:'Treatment',title:'Treatment',date:'',datePrecision:'unknown',details:'Observation and review'}];assert.ok(missing(r).some(e=>/conflicts/.test(e.message)));
+ r.timelineStatus='recorded';assert.equal(missing(r).length,0);
+ r.events[0].amount='text';assert.ok(validateForm(r,true,{},true,true).errors.some(e=>/numerical amount/.test(e.message)));
+ assert.ok(validateForm({...newRecord('nodule','owner','f1',2026),managementUnavailable:{at:'x',actor:'forged'}},true,{},true).errors.some(e=>e.field==='events'));
+});
+
+test('fellow save cannot forge the historical timeline waiver',async()=>{
+ const f=fixture(),r={...newRecord('nodule','fellow1','f1',2026),historical:true};f.seed(r);
+ await assert.rejects(f.api.save(r.id,0,{...r,managementUnavailable:{at:'forged',actor:'owner'}},true));
+ assert.equal(f.rows[0].managementUnavailable,undefined);assert.equal(f.rows[0].status,'draft');
+});
+
+test('management status merges as an events-section field without losing unrelated events or owner settings',()=>{
+ const base=newRecord('nodule','owner','f1',2026),mine={...structuredClone(base),timelineStatus:'none'},latest={...structuredClone(base),remindersHidden:true,managementUnavailable:{at:'2026-11-08',actor:'owner'}};
+ const changes=editChanges(base,mine,'events');assert.deepEqual(changes,[{key:'timeline:status',value:'none'}]);
+ const merged=mergeEdit(base,latest,{section:'events',baseRevision:0,changes});assert.equal(merged.record.timelineStatus,'none');assert.equal(merged.record.remindersHidden,true);assert.deepEqual(merged.record.managementUnavailable,latest.managementUnavailable);
+ latest.timelineStatus='recorded';latest.revision=1;assert.ok(mergeEdit(base,latest,{section:'events',baseRevision:0,changes}).conflict);
+ assert.throws(()=>mergeEdit(base,base,{section:'0',baseRevision:0,changes}));
 });

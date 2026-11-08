@@ -11,11 +11,11 @@ function canonical(value: unknown): unknown { if (Array.isArray(value)) return v
 export const same = (a: unknown, b: unknown) => JSON.stringify(canonical(a ?? null)) === JSON.stringify(canonical(b ?? null));
 export function editItems(r: CaseForm, section: EditSection): Record<string, unknown> {
     if (/^[0-7]$/.test(section)) return {...(section==='5'&&r.kind==='ravc'?{'intraarterial:log':r.intraarterial||null}:{}),...Object.fromEntries(fields(r.kind).filter(f => !f.system && f.section === Number(section)).map(f => ['answer:' + f.id, r.answers[f.id] || null]))};
-    if (section === 'events') return Object.fromEntries(r.events.map(e => ['event:' + e.id, e]));
+    if (section === 'events') return {'timeline:status':r.timelineStatus||null,...Object.fromEntries(r.events.map(e => ['event:' + e.id, e]))};
     const o = r.outcomes || emptyOutcomes(), visits = Object.fromEntries(o.followups.map(f => ['followup:' + f.id, f]));
     return section === 'followup' ? visits : { 'outcomes:wound': o.wound, 'outcomes:firstTreatment': o.firstTreatment, 'outcomes:severity': o.severity, 'outcomes:healing': o.healing, ...visits };
 }
-export function editLabel(kind: CaseRecord['kind'], key: string) { return key==='intraarterial:log'?'Intraarterial treatment log':key.startsWith('answer:') ? fields(kind).find(f => 'answer:' + f.id === key)?.label || 'Clinical answer' : key.startsWith('event:') ? 'Dated event' : key.startsWith('followup:') ? 'Follow-up assessment' : ({ 'outcomes:wound': 'Wound present', 'outcomes:firstTreatment': 'First RAVC treatment date', 'outcomes:severity': 'Initial wound severity', 'outcomes:healing': 'Healing status and dates' }[key] || 'Clinical information'); }
+export function editLabel(kind: CaseRecord['kind'], key: string) { return key==='timeline:status'?'Management timeline status':key==='intraarterial:log'?'Intraarterial treatment log':key.startsWith('answer:') ? fields(kind).find(f => 'answer:' + f.id === key)?.label || 'Clinical answer' : key.startsWith('event:') ? 'Dated event' : key.startsWith('followup:') ? 'Follow-up assessment' : ({ 'outcomes:wound': 'Wound present', 'outcomes:firstTreatment': 'First RAVC treatment date', 'outcomes:severity': 'Initial wound severity', 'outcomes:healing': 'Healing status and dates' }[key] || 'Clinical information'); }
 export function editChanges(base: CaseForm, draft: CaseForm, section: EditSection): EditChange[] { const a = editItems(base, section), b = editItems(draft, section); return [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => !same(a[k], b[k])).map(key => ({ key, value: b[key] ?? null })); }
 export function mergeEdit(base: CaseRecord, latest: CaseRecord, input: unknown) {
     const request = editRequestSchema.parse(input), before = editItems(base, request.section), current = editItems(latest, request.section);
@@ -37,7 +37,8 @@ export function mergeEdit(base: CaseRecord, latest: CaseRecord, input: unknown) 
     const record = structuredClone(latest);
     for (const change of apply) {
         const [kind, key] = change.key.split(':');
-        if(kind==='intraarterial'){if(change.value===null)delete record.intraarterial;else record.intraarterial=change.value as any;}
+        if(kind==='timeline'){if(change.value===null)delete record.timelineStatus;else record.timelineStatus=change.value as any;}
+        else if(kind==='intraarterial'){if(change.value===null)delete record.intraarterial;else record.intraarterial=change.value as any;}
         else if (kind === 'answer') { if (change.value === null) delete record.answers[key]; else record.answers[key] = change.value as Answer; }
         else if (kind === 'event') {
             record.events = record.events.filter(e => e.id !== key);

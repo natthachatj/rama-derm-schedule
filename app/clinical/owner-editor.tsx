@@ -9,6 +9,7 @@ import { answerText, visible, type Answer, type CaseRecord } from '../../lib/cli
 import { editChanges, editSectionTitle, type EditConflict, type EditSection } from '../../lib/clinical/edit';
 import { emptyOutcomes } from '../../lib/clinical/outcomes';
 import { ClinicalFields } from './form';
+import TimelineStatus from './timeline-status';
 import EventEditor from './event-editor';
 import OutcomeEditor from './outcome-editor';
 import { clinicalApi } from './api';
@@ -30,6 +31,11 @@ export default function OwnerEditor({ initial, section: initialSection, focusFie
     function update(next: CaseRecord) { setDraft(next); setConflict(undefined); setResolutions({}); setError(''); setErrors([]); }
     function cancel() { if (saving) return; pendingTarget.current = null; if (dirty) setLeaving(true); else onCancel(); }
     function discard() { allowLeave.current = true; const target = pendingTarget.current; if (target?.isConnected) { target.click(); queueMicrotask(() => { allowLeave.current = false; }); setLeaving(false); } else onCancel(); }
+    async function historicalTimeline(value:boolean) {
+        if(dirty||saving)return;setSaving(true);setError('');
+        try {const result=await clinicalApi('action',{action:'caseOption',id:initial.id,revision:base.current.revision,option:'managementUnavailable',value});allowLeave.current=true;onSaved(result.record,'events');}
+        catch(e){setError((e as Error).message);}finally{setSaving(false);}
+    }
     async function save() {
         if (busy.current || !dirty) return;
         busy.current = true; setSaving(true); setError(''); setErrors([]);
@@ -51,7 +57,7 @@ export default function OwnerEditor({ initial, section: initialSection, focusFie
         {conflict && <section className="clinical-conflicts" aria-label="Resolve changed information"><h3>Choose the values to save</h3><p>Other saved information will be preserved. If the case changes again, we will check again before saving.</p>{conflict.items.map(item => <fieldset key={item.key} disabled={saving}><legend>{item.label}</legend><label className="clinical-conflict-choice"><input type="radio" name={'resolve-' + item.key} checked={resolutions[item.key] === 'mine'} onChange={() => setResolutions({ ...resolutions, [item.key]: 'mine' })}/><span><strong>Use my value</strong><pre>{displayValue(item.mine)}</pre></span></label><label className="clinical-conflict-choice"><input type="radio" name={'resolve-' + item.key} checked={resolutions[item.key] === 'latest'} onChange={() => setResolutions({ ...resolutions, [item.key]: 'latest' })}/><span><strong>Keep latest saved value</strong><pre>{displayValue(item.latest)}</pre></span></label></fieldset>)}</section>}
         <fieldset className="clinical-owner-fields" disabled={saving}>
         {/^[0-7]$/.test(section) && <div className="clinical-fields"><ClinicalFields historical={draft.historical} onIntraarterial={intraarterial=>update({...draft,intraarterial})} originals={initial.sourceRaw} form={draft} section={Number(section)} extraChoices={extraChoices} issues={needs} onChange={(id,value)=>update({...draft,answers:setConditionalAnswer(draft.kind,draft.answers,id,value)})}/></div>}
-        {section === 'events' && <div id="field-events"><EventEditor events={draft.events} onChange={events => update({ ...draft, events })}/></div>}
+        {section === 'events' && <div id="field-events">{draft.historical&&<div className="clinical-historical-option"><p>{draft.managementUnavailable?'Historical timeline unavailable. Existing entries are preserved; this is not recorded as no treatment.':'Historical management details missing? The clinical owner can skip this requirement without inventing treatment information.'}</p><button type="button" className="button small" disabled={dirty||saving} onClick={()=>void historicalTimeline(!draft.managementUnavailable)}>{draft.managementUnavailable?'Add information later':'Historical management details unavailable — skip requirement'}</button>{dirty&&<small>Save or cancel changes before changing this historical exemption.</small>}</div>}{!draft.managementUnavailable&&<TimelineStatus value={draft.timelineStatus} onChange={timelineStatus=>update({...draft,timelineStatus})}/>}<EventEditor events={draft.events} onChange={events => update({ ...draft, events })}/></div>}
         {(section === 'outcomes' || section === 'followup') && <div id="field-outcomes"><OutcomeEditor value={draft.outcomes} onlyFollowup={section === 'followup' ? newVisitId : undefined} onChange={outcomes => update({ ...draft, outcomes })}/></div>}
         {section === 'followup' && <p className="muted">For healing-time analysis, record the actual healing date in Outcome & follow-up when known; an examination showing a healed wound is not automatically its exact healing date.</p>}
         <label>Additional explanation (optional)<textarea rows={2} maxLength={1000} value={note} onChange={e => setNote(e.target.value)} placeholder="Only add a note if you want to explain the change."/></label><p className="muted">Edit history automatically records the fields changed, your identity and the time. You do not need to type an edit reason.</p>

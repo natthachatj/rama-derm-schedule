@@ -54,3 +54,11 @@
 @media(max-width:480px){.clinical-treatment-group{padding:12px}.clinical-ia-day{padding:10px}.clinical-information-status{max-width:100%}}
 .clinical-treatment-group>label,.clinical-ia-day>label,.clinical-ia-day fieldset>label{display:grid;gap:8px;margin:12px 0;width:100%;font-size:14px}
 .clinical-ia-day input,.clinical-ia-day select,.clinical-ia-day textarea{width:100%;font-size:16px}
+
+.clinical-card-dot-button{position:absolute;right:-12px;top:-12px;display:grid;place-items:center;width:44px;height:44px;border:0;background:transparent;cursor:pointer;border-radius:50%;padding:0;}
+.clinical-card-dot-button .clinical-card-dot{position:static;width:12px;height:12px;background:#c73545;pointer-events:none;}
+.clinical-card-dot-button:focus-visible{outline:2px solid #3468b9;outline-offset:1px;}
+.clinical-reminder-actions{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 14px;}
+.clinical-historical-option,.clinical-timeline-status{padding:16px;border:1px solid #cbd8e7;border-radius:12px;margin:16px 0;background:#f6f9fc;min-width:0;}
+.clinical-historical-option button{white-space:normal;text-align:left;}
+.clinical-historical-note{font-size:13px;color:#60758b;}

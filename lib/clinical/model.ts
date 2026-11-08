@@ -9,7 +9,7 @@ export const answerSchema = z.object({ state: z.enum(answerStates), value: z.uni
 export type Answer = z.infer<typeof answerSchema>;
 export const eventSchema = z.object({ id: z.string().uuid(), type: z.enum(['Injection', 'History', 'Investigation', 'Treatment', 'Follow-up']), date: z.string().max(10), datePrecision: z.enum(['day', 'month', 'year', 'unknown']), title: z.string().trim().min(1).max(160), details: z.string().max(6000), amount: z.string().max(100).optional(), unit: z.string().max(40).optional(), response: z.string().max(2000).optional(), agent:z.string().max(120).optional(), route:z.string().max(120).optional(), category:z.enum(['medication','procedure','dissolution','injection']).optional(), material:z.string().max(120).optional(),brand:z.string().max(120).optional(),frequency:z.string().max(120).optional(), duration:z.string().max(40).optional(), durationUnit:z.enum(['days','weeks','months','years']).optional() });
 export type CaseEvent = z.infer<typeof eventSchema>;
-export const formSchema = z.object({ kind: z.enum(['ravc', 'nodule']), answers: z.record(answerSchema), events: z.array(eventSchema).max(150), intraarterial: iaSchema.optional(), outcomes: outcomesSchema.optional() });
+export const formSchema = z.object({ kind: z.enum(['ravc', 'nodule']), answers: z.record(answerSchema), events: z.array(eventSchema).max(150), timelineStatus: z.enum(['recorded','none']).optional(), intraarterial: iaSchema.optional(), outcomes: outcomesSchema.optional() });
 export type CaseForm = z.infer<typeof formSchema>;
 export type CaseRecord = CaseForm & {
     id: string;
@@ -33,6 +33,9 @@ export type CaseRecord = CaseForm & {
         fingerprint: string;
     };
     historical: boolean;
+    remindersHidden?: boolean;
+    managementUnavailable?: { at: string; actor: string };
+
     sourceRaw?: Record<string, string>;
     folderId?: string;
     pdfId?: string;
@@ -56,7 +59,7 @@ export const answerText = (a?: Answer):string => {
  return value+(retainedText(a)?' · Retained saved text: '+retainedText(a):'')+(a.details?' · '+a.details:'');
 };
 export function visible(f: Field, answers: Record<string, Answer>) {return !f.system&&(answers[f.id]?.state==='recorded'&&f.type==='number'||!!answers[f.id]?.details?.trim()||conditionMet(f,answers)||!!retainedText(answers[f.id]).trim()||answers[f.id]?.state==='recorded' && (Array.isArray(answers[f.id].value)?answers[f.id].value.length>0:!!String(answers[f.id].value).trim()));}
-export function validateForm(input: unknown, submit = false, extraChoices:Record<string,string[]> = {}, historical = false) {
+export function validateForm(input: unknown, submit = false, extraChoices:Record<string,string[]> = {}, historical = false, managementExempt = false) {
     const f = formSchema.parse(input), allowed = new Set(fields(f.kind).filter(x => !x.system).map(x => x.id));
     for (const k of Object.keys(f.answers))
         if (!allowed.has(k))
@@ -109,7 +112,12 @@ export function validateForm(input: unknown, submit = false, extraChoices:Record
         if (e.amount && !e.unit)
             errors.push({ field: 'events', message: `${e.title}: add a dose/amount unit.` });
     }
-    if(submit){const status=f.answers[f.kind+'_medical_status'];if(status?.state==='recorded'&&status.value==='Performed'&&!f.events.some(e=>e.category==='medication'))errors.push({field:'events',message:'Add a structured medication entry for prescribed medical treatment.'});}
+    if(submit && !(historical && managementExempt)){const status=f.answers[f.kind+'_medical_status'];if(status?.state==='recorded'&&status.value==='Performed'&&!f.events.some(e=>e.category==='medication'))errors.push({field:'events',message:'Add a structured medication entry for prescribed medical treatment.'});}
+    if(submit && !(historical && managementExempt)) {
+        const treatments=f.events.filter(e=>e.type==='Treatment');
+        if(f.timelineStatus==='none' && (treatments.length || Object.entries(f.answers).some(([key,a])=>key.endsWith('_status')&&a.state==='recorded'&&a.value==='Performed') || f.intraarterial?.status==='performed'))errors.push({field:'events',message:'No treatment performed conflicts with recorded treatment. Review management status and timeline.'});
+        else if(f.timelineStatus!=='none' && !treatments.some(e=>e.details.trim() || e.agent?.trim()))errors.push({field:'events',message:'Management timeline: add a treatment entry with management details, or explicitly select No treatment performed.'});
+    }
     const get = (k: string) => { const a = f.answers[k]; return a?.state === 'recorded' && typeof a.value === 'string' ? a.value : ''; };
     if (f.outcomes?.firstTreatment) { const onset = get(f.kind === 'ravc' ? 'ravc_P' : 'nodule_AB').slice(0, 10); if (validDay(onset) && f.outcomes.firstTreatment < onset) errors.push({ field: 'outcomes', message: 'First RAVC treatment cannot precede symptom onset. Check the dates.' }); }
     return { form: f, errors };

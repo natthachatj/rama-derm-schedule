@@ -1,7 +1,7 @@
 export type RegistryKind = 'ravc' | 'nodule';
 export const SOURCES = { ravc: { title: 'RAVC complication case', sheetId: '1T9eHLdm84bHKy3uoRY5dsXLEGc_izKhaN3HhtcVd2XI', tab: 'Form Responses 1' }, nodule: { title: 'Injectable-related nodule', sheetId: '13xdpgSqdTvoBkxuYJwYVoMLZRbXXB1KR9sh7SRYNck0', tab: 'Form Responses 1' } } as const;
 export const DRIVE_PARENT = '1fUqfMTRLxfcl_mSKeiLozlNDG1QYWo5P';
-export const FORM_VERSION = 5;
+export const FORM_VERSION = 6;
 export const sectionTitles = ['Patient & referral', 'Injection & history', 'Symptoms & examination', 'Ultrasound', 'Pathology & microbiology', 'Management', 'Follow-up & outcome', 'Other investigations'];
 export type Field = {
     id: string;

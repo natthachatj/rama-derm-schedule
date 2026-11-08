@@ -17,12 +17,12 @@ export async function importPreview(repo: SheetsRepository, kind: RegistryKind) 
             answers[f.id] = { state: 'recorded', value: format === 'DATE_TIME' && f.type === 'datetime' ? iso.slice(0, 16) : iso.slice(0, 10), ...(f.type === 'datetime' && format === 'DATE' ? { precision: 'day' as const } : {}) };
         }
     }
-} let intraarterial:CaseRecord['intraarterial'];const structuredAt=headers.indexOf('Registry Structured Answers');
+} let timelineStatus:CaseRecord['timelineStatus'];let intraarterial:CaseRecord['intraarterial'];const structuredAt=headers.indexOf('Registry Structured Answers');
  if(structuredAt>=0 && row[structuredAt]) {
-  try {const stored=JSON.parse(structuredHeaders.map(h=>{const at=headers.indexOf(h);return at>=0?row[at]||'':'';}).join(''));if(stored.__intraarterial)intraarterial=iaSchema.parse(stored.__intraarterial);for(const field of fields(kind).filter(f=>!f.system)){if(stored[field.id]!==undefined){const parsed=answerSchema.safeParse(stored[field.id]);if(!parsed.success)throw Error('Invalid structured answer');const at=headers.indexOf(field.header),cell=at>=0?String(row[at]||''):'';if(at<0||cell===String(sourceValue(field,parsed.data)))answers[field.id]=parsed.data;}}}
+  try {const stored=JSON.parse(structuredHeaders.map(h=>{const at=headers.indexOf(h);return at>=0?row[at]||'':'';}).join(''));if(stored.__timelineStatus!==undefined){if(!['recorded','none'].includes(stored.__timelineStatus))throw Error('Invalid management status');timelineStatus=stored.__timelineStatus;}if(stored.__intraarterial)intraarterial=iaSchema.parse(stored.__intraarterial);for(const field of fields(kind).filter(f=>!f.system)){if(stored[field.id]!==undefined){const parsed=answerSchema.safeParse(stored[field.id]);if(!parsed.success)throw Error('Invalid structured answer');const at=headers.indexOf(field.header),cell=at>=0?String(row[at]||''):'';if(at<0||cell===String(sourceValue(field,parsed.data)))answers[field.id]=parsed.data;}}}
   catch {throw Error('Structured answers on source row '+(i+2)+' need review. No import was performed.');}
  }
- const id = idCol >= 0 ? row[idCol] : undefined; return [{ row: i + 2, kind, fingerprint: fingerprint(row), answers, sourceRaw, intraarterial, existingId: id || undefined, alreadyImported: !!id && existing.has(id), warnings: ['Original answers retained; ambiguous dates and combined fields require owner review.'] }]; }); }
+ const id = idCol >= 0 ? row[idCol] : undefined; return [{ row: i + 2, kind, fingerprint: fingerprint(row), answers, sourceRaw, intraarterial, timelineStatus, existingId: id || undefined, alreadyImported: !!id && existing.has(id), warnings: ['Original answers retained; ambiguous dates and combined fields require owner review.'] }]; }); }
 export async function commitImport(repo: SheetsRepository, kind: RegistryKind, selections: {
     row: number;
     fingerprint: string;
@@ -34,6 +34,6 @@ export async function commitImport(repo: SheetsRepository, kind: RegistryKind, s
         skipped++;
         continue;
     }
-    const record: CaseRecord = { ...newRecord(kind, actor, 'historical', 0), ...(c.existingId ? { id: c.existingId } : {}), answers: c.answers, intraarterial:c.intraarterial, sourceRaw: c.sourceRaw, status: 'submitted', historical: true, processing: 'complete', source: { spreadsheet: SOURCES[kind].sheetId, sheet: SOURCES[kind].tab, row: c.row, fingerprint: c.fingerprint } };
+    const record: CaseRecord = { ...newRecord(kind, actor, 'historical', 0), ...(c.existingId ? { id: c.existingId } : {}), answers: c.answers, timelineStatus:c.timelineStatus, intraarterial:c.intraarterial, sourceRaw: c.sourceRaw, status: 'submitted', historical: true, processing: 'complete', source: { spreadsheet: SOURCES[kind].sheetId, sheet: SOURCES[kind].tab, row: c.row, fingerprint: c.fingerprint } };
     records.push(record);
 } await repo.importHistoricalBatch(records, actor, at); return { imported: records.length, skipped }; }

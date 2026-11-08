@@ -108,7 +108,7 @@ export class SheetsRepository implements ClinicalRepository {
             values[at] = sourceValue(field,a);
             if(field.type==='number'){const companion=[a?.unit||field.unit||'',...(field.range?[a?.upper||'']:[]),a?.details||''];quantityHeaders(field).forEach((h,i)=>values[headers.indexOf(h)]=companion[i]);}
         }
-        const structured=JSON.stringify({...r.answers,...(r.intraarterial?{__intraarterial:r.intraarterial}:{})});if(structured.length>170000)throw Error('Structured answers exceed the spreadsheet capacity.');
+        const structured=JSON.stringify({...r.answers,...(r.timelineStatus?{__timelineStatus:r.timelineStatus}:{}),...(r.intraarterial?{__intraarterial:r.intraarterial}:{})});if(structured.length>170000)throw Error('Structured answers exceed the spreadsheet capacity.');
         structuredHeaders.forEach((h,i)=>values[headers.indexOf(h)]=structured.slice(i*44000,(i+1)*44000));
         if(kind==='ravc')iaSummaryHeaders.forEach((h,i)=>values[headers.indexOf(h)]=iaSummary(r)[i]);
         values[idColumn] = r.id;
@@ -126,7 +126,7 @@ export class SheetsRepository implements ClinicalRepository {
         const a = r.answers[field.id];
         writes.push({ range: `${quote(SOURCES[kind].tab)}!${column(at)}${rowNumber}`, values: [[sourceValue(field,a)]] });
         if(field.type==='number'){const companion=[a?.unit||field.unit||'',...(field.range?[a?.upper||'']:[]),a?.details||''];quantityHeaders(field).forEach((h,i)=>writes.push({range:`${quote(SOURCES[kind].tab)}!${column(headers.indexOf(h))}${rowNumber}`,values:[[companion[i]]]}));}
-    } if(kind==='ravc')iaSummaryHeaders.forEach((h,i)=>writes.push({range:`${quote(SOURCES[kind].tab)}!${column(headers.indexOf(h))}${rowNumber}`,values:[[iaSummary(r)[i]]]})); const structured=JSON.stringify({...r.answers,...(r.intraarterial?{__intraarterial:r.intraarterial}:{})});if(structured.length>170000)throw Error('Structured answers exceed the spreadsheet capacity.'); structuredHeaders.forEach((h,i)=>writes.push({range:`${quote(SOURCES[kind].tab)}!${column(headers.indexOf(h))}${rowNumber}`,values:[[structured.slice(i*44000,(i+1)*44000)]]})); writes.push({ range: `${quote(SOURCES[kind].tab)}!${column(idColumn)}${rowNumber}`, values: [[r.id]] }); if (!r.historical) {
+    } if(kind==='ravc')iaSummaryHeaders.forEach((h,i)=>writes.push({range:`${quote(SOURCES[kind].tab)}!${column(headers.indexOf(h))}${rowNumber}`,values:[[iaSummary(r)[i]]]})); const structured=JSON.stringify({...r.answers,...(r.timelineStatus?{__timelineStatus:r.timelineStatus}:{}),...(r.intraarterial?{__intraarterial:r.intraarterial}:{})});if(structured.length>170000)throw Error('Structured answers exceed the spreadsheet capacity.'); structuredHeaders.forEach((h,i)=>writes.push({range:`${quote(SOURCES[kind].tab)}!${column(headers.indexOf(h))}${rowNumber}`,values:[[structured.slice(i*44000,(i+1)*44000)]]})); writes.push({ range: `${quote(SOURCES[kind].tab)}!${column(idColumn)}${rowNumber}`, values: [[r.id]] }); if (!r.historical) {
         const timestamp = headers.indexOf('Timestamp');
         if (timestamp >= 0)
             writes.push({ range: `${quote(SOURCES[kind].tab)}!${column(timestamp)}${rowNumber}`, values: [[r.submittedAt || r.created]] });
