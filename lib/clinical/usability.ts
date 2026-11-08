@@ -1,5 +1,5 @@
 import { fields, sectionTitles } from './catalog';
-import { validateForm, stateLabels, type CaseForm, type CaseRecord } from './model';
+import { validateForm, visible, stateLabels, type CaseForm, type CaseRecord } from './model';
 import type { EditSection } from './edit';
 export type Attention = { field: string; label: string; message: string; section: EditSection; review?: boolean };
 export function attention(form: CaseForm): Attention[] {
@@ -8,6 +8,25 @@ export function attention(form: CaseForm): Attention[] {
     catch (e) { errors = ((e as any).issues || []).map((i: any) => { const p = i.path || []; return { field: p[0] === 'answers' ? p[1] : p[0] || 'outcomes', message: p.filter((x: any) => x !== 'answers').join(' → ') + ': ' + i.message }; }); }
     return errors.map(e => { const f = fields(form.kind).find(f => f.id === e.field); return { ...e, label: f?.label || (e.field === 'events' ? 'Dated event' : 'Outcome & follow-up'), section: f ? String(f.section) as EditSection : e.field === 'events' ? 'events' : 'outcomes' }; });
 }
+/** Clinical completeness is separate from submission validation and export status. */
+export function caseAttention(form: CaseForm): Attention[] {
+ const issues = attention(form);
+ const essential = form.kind === 'ravc'
+  ? ['ravc_sex','ravc_D','ravc_Q','ravc_W','ravc_K','ravc_AB','ravc_AC','ravc_AI','ravc_R']
+  : ['nodule_D','nodule_C','nodule_K','nodule_R','nodule_M','nodule_CM','nodule_CO','nodule_CV'];
+ for (const id of essential) {
+  const f = fields(form.kind).find(f=>f.id===id), a=form.answers[id];
+  if (f && visible(f,form.answers) && (!a || a.state==='not_recorded' || (a.state==='recorded' && !(Array.isArray(a.value)?a.value.join('').trim():String(a.value||'').trim()))))
+   issues.push({field:id,label:f.label,section:String(f.section) as EditSection,message:f.label+': information not recorded.'});
+ }
+ return [...new Map(issues.map(i=>[i.field,i])).values()];
+}
+export type CaseSort = 'visit' | 'created' | 'updated';
+export function sortCaseRows<T extends {id:string;visitDate?:string;created?:string;updated?:string}>(rows:T[], basis:CaseSort='visit', direction:'asc'|'desc'='desc'):T[] {
+ const time=(r:T)=>{ const v=basis==='visit'?r.visitDate:r[basis]; const n=v?Date.parse(v):NaN; return Number.isFinite(n)?n:null; };
+ return [...rows].sort((a,b)=>{const x=time(a),y=time(b);return x===null?(y===null?a.id.localeCompare(b.id):1):y===null?-1:(x-y)*(direction==='asc'?1:-1)||a.id.localeCompare(b.id);});
+}
+export function processingLabel(value:string) { return ({complete:'Sheet/PDF updated',pending:'Sheet/PDF update pending',failed:'Sheet/PDF update failed',draft:'Draft'} as Record<string,string>)[value] || 'Sheet/PDF status: '+value; }
 export function legacyReview(form: CaseForm, extraChoices: Record<string,string[]> = {}): Attention[] { return fields(form.kind).filter(f => !f.system && form.answers[f.id]?.state === 'recorded' && f.options && (Array.isArray(form.answers[f.id].value) ? form.answers[f.id].value as string[] : [String(form.answers[f.id].value)]).some(v => v && ![...f.options!, ...(extraChoices[f.id] || [])].includes(v))).map(f => ({field:f.id,label:f.label,section:String(f.section) as EditSection,message:f.label + ': saved answer differs from standard choices; review if needed.',review:true})); }
 export const sectionName = (s: EditSection) => /^[0-7]$/.test(s) ? sectionTitles[Number(s)] : s === 'events' ? 'Dated events' : 'Outcome & follow-up';
 export const commonFilters = [

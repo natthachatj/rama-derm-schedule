@@ -277,3 +277,9 @@ one response description already matched. Two extension headers were appended at
 AO Registry Record ID and all original column positions. Forty pre/post audit snapshots were retained
 in Registry Revisions. No numeric totals were guessed or backfilled and no clinical record data was
 copied into this repository. Recovered records await explicit PDF processing after app deployment.
+
+### Case-card completeness and chronological ordering
+
+Owner case cards now show a red dot and expandable “Missing information” count for required/invalid answers and essential demographics, material, area, treatment and final outcome information. The count deduplicates fields; explicit unknown and valid not-applicable answers are retained as distinct states. Fill in fetches the latest case, rechecks the issue, and opens/focuses the corresponding editor section. Owner inline markers and detail issue lists use the same rules; optional completeness gaps do not become submission-validation blockers. Missing metadata and visit chronology are excluded from fellow receipts.
+
+Sort by first RAMA/RAVC visit (default), date added to the registry, or last updated, with newest/oldest first. Unknown dates stay last in either direction, and equal dates use a stable case-ID tie-break. Historical import timestamps remain separate from clinical visit dates. Approval and completeness remain separate from explicit Sheet/PDF processing labels. No live records or sharing permissions are changed by this update.

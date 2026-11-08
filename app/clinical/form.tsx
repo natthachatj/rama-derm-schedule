@@ -1,6 +1,6 @@
 import EventEditor from './event-editor';
 import AttentionList, { jumpToField } from './attention';
-import { attention } from '../../lib/clinical/usability';
+import { attention, caseAttention } from '../../lib/clinical/usability';
 import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { ArrowLeft, ArrowRight, Save, Plus, Trash2, CheckCircle2, AlertTriangle } from 'lucide-react';
@@ -8,8 +8,9 @@ import { fields, sectionTitles, SOURCES, type Field } from '../../lib/clinical/c
 import { stateLabels, answerText, visible, validateForm, type Answer, type CaseRecord, type CaseEvent, type CaseForm } from '../../lib/clinical/model';
 import { clinicalApi } from './api';
 import OutcomeEditor from './outcome-editor';
-export default function ClinicalForm({ initial, preview = false, owner = false, extraChoices = {}, onClose, onSaved, onDeleted }: {
+export default function ClinicalForm({ initial, preview = false, owner = false, extraChoices = {}, focusField, onClose, onSaved, onDeleted }: {
     initial: CaseRecord;
+    focusField?: string;
     preview?: boolean;
     owner?: boolean;
     extraChoices?: Record<string, string[]>;
@@ -25,7 +26,8 @@ export default function ClinicalForm({ initial, preview = false, owner = false, 
     const sequence = useRef(0), revision = useRef(initial.revision), savingRef = useRef(false), current = useRef(form);
     current.current = form;
     const sections = [...new Set(fields(form.kind).filter(f => !f.system).map(f => f.section))].sort(), steps = [...sections.map(n => sectionTitles[n]), 'Dated events', 'Outcome & follow-up', 'Review & submit'], review = step === steps.length - 1;
-    const needs = attention(form);
+    const needs = owner ? caseAttention(form) : attention(form);
+    useEffect(()=>{if(!focusField)return; const issue=caseAttention(form).find(i=>i.field===focusField); if(!issue)return; setStep(issue.section==='events'?sections.length:issue.section==='outcomes'?sections.length+1:sections.indexOf(Number(issue.section))); jumpToField(focusField);},[focusField]);
     const editableDraft = record.status === 'draft';
     function update(next: CaseForm) { sequence.current++; setForm(next); setDirty(true); setConfirmed(false); }
     async function save(submit = false) { if (savingRef.current)
@@ -138,6 +140,7 @@ export function ClinicalField({ field: f, value, onChange, extraChoices, error, 
         <label id={inputId + '-label'} htmlFor={inputId}>{error && <span className="clinical-dot" aria-label="Needs attention"/>}{f.label}{f.required && <span className="required"> *</span>}{f.private && <span className="tag">Private</span>}</label>
         <div className="clinical-answer-status" role="group" aria-label={'Information status: ' + f.label}>
             <button type="button" aria-pressed={a.state === 'recorded'} onClick={startRecording}>Record</button>
+            {['ravc_sex','nodule_D'].includes(f.id) && <button type="button" aria-pressed={a.state==='unknown'} onClick={()=>onChange({...a,state:'unknown'})}>Unknown</button>}
             {['ravc_dissolution_total','nodule_CS'].includes(f.id) && <button type="button" aria-pressed={a.state==='unknown'} onClick={()=>onChange({...a,state:'unknown'})}>Dose unknown</button>}
             <button type="button" aria-pressed={a.state === 'not_applicable'} onClick={() => onChange({ ...a, state: 'not_applicable' })}>Not applicable</button>
         </div>

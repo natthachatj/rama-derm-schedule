@@ -6,7 +6,7 @@ import {pathToFileURL} from 'node:url';
 const dir=await mkdtemp(new URL('../.auth-test-usability-',import.meta.url));
 await build({entryPoints:['lib/clinical/usability.ts','lib/clinical/dashboard.ts','lib/clinical/service.ts','lib/clinical/model.ts','lib/clinical/research.ts'],outdir:dir,outbase:'.',bundle:true,platform:'node',target:'node22',format:'esm',packages:'external'});
 const load=p=>import(pathToFileURL(`${dir}/lib/clinical/${p}.js`));
-const {attention,registryValues,matchesFilters,filterDefinitions}=await load('usability');
+const {caseAttention,sortCaseRows,processingLabel,attention,registryValues,matchesFilters,filterDefinitions}=await load('usability');
 const {dashboardChart,defaultCharts,chartColor}=await load('dashboard');
 const {createClinicalService}=await load('service');
 const {newRecord,defaultSettings}=await load('model');
@@ -27,3 +27,27 @@ test('default dashboard has six charts with known denominators and multi-finding
 test('linked episodes are counted once and conflicting single-valued chart answers are excluded',()=>{const r={...newRecord('ravc','owner','f1',2026),status:'submitted'};r.answers.ravc_D=a('40');const s={...structuredClone(r),id:crypto.randomUUID(),linkedCaseIds:[r.id],answers:{ravc_D:a('55')}};const items=episodes([r,s],defaultResearchConfig()).selected;assert.equal(items.length,1);const d=dashboardChart(items,'age');assert.equal(d.known,0);assert.equal(d.conflicting,1);});
 test('outcome charts distinguish assessed three-month outcomes, unassessed latest recurrence and wound eligibility',()=>{const r={...newRecord('ravc','owner','f1',2026),status:'submitted',outcomes:{wound:'yes',firstTreatment:'2026-08-01',severity:'unknown',healing:{status:'healed',precision:'unknown',date:'',from:'',to:''},followups:[{id:crypto.randomUUID(),date:'2026-10-30',assessment:'assessed',sequelae:['None'],healing:'healed',recurrence:'no',notes:''}]}};const e={id:r.id,members:[r],date:'2026-08-01'};assert.equal(dashboardChart([e],'sequelae').rows[0].label,'No sequelae');assert.equal(dashboardChart([e],'healing').rows[0].label,'Healed');r.outcomes.followups.push({...r.outcomes.followups[0],id:crypto.randomUUID(),date:'2026-11-05',recurrence:'not_assessed'});assert.equal(dashboardChart([e],'recurrence').known,0);});
 test('material colors remain stable across filtering and missing values are gray',()=>{assert.equal(chartColor('material','HA'),chartColor('material','HA'));assert.notEqual(chartColor('material','HA'),chartColor('material','CaHA'));assert.equal(chartColor('sex','Not recorded'),'#8b96a6');});
+
+test('case completeness flags optional sex, deduplicates required gaps and accepts explicit unavailable states',()=>{
+ const r=newRecord('ravc','owner','f1',2026);
+ assert.ok(!attention(r).some(i=>i.field==='ravc_sex'));
+ assert.ok(caseAttention(r).some(i=>i.field==='ravc_sex'&&i.section==='0'));
+ assert.equal(new Set(caseAttention(r).map(i=>i.field)).size,caseAttention(r).length);
+ for(const state of ['unknown','not_applicable']){r.answers.ravc_sex={state,value:''};assert.ok(!caseAttention(r).some(i=>i.field==='ravc_sex'));}
+ r.answers.ravc_sex=a('Female');assert.ok(!caseAttention(r).some(i=>i.field==='ravc_sex'));
+ r.answers.ravc_sex=a('  ');assert.ok(caseAttention(r).some(i=>i.field==='ravc_sex'));
+});
+test('owner list includes named completeness issues and visit chronology; fellow receipts never leak them',async()=>{
+ const f=fixture(),r=await f.api.create('ravc',2026,'f1');r.answers.ravc_Q=a('2024-06-01');f.seed({...r,id:'historical',historical:true});
+ let rows=await f.api.list();for(const row of rows){assert.equal(row.missingInformation,undefined);assert.equal(row.visitDate,undefined);assert.equal(row.summary,undefined);}
+ f.owner();rows=await f.api.list();assert.equal(rows.find(r=>r.id==='historical').visitDate,'2024-06-01');assert.ok(rows[0].missingInformation.some(i=>i.field==='ravc_sex'));
+});
+test('chronological sorting uses selected dates, unknowns last in both directions, stable ties and no mutation',()=>{
+ const rows=[{id:'unknown',visitDate:'',created:'2026-11-08'},{id:'b',visitDate:'2024-01-01',created:'2026-10-01'},{id:'a',visitDate:'2024-01-01',created:'2026-09-01'},{id:'new',visitDate:'2026-01-01',created:'2026-08-01'},{id:'bad',visitDate:'invalid'}];
+ const original=structuredClone(rows);
+ assert.deepEqual(sortCaseRows(rows).map(r=>r.id),['new','a','b','bad','unknown']);
+ assert.deepEqual(sortCaseRows(rows,'visit','asc').map(r=>r.id),['a','b','new','bad','unknown']);
+ assert.deepEqual(sortCaseRows(rows,'created','desc').map(r=>r.id),['unknown','b','a','new','bad']);
+ assert.deepEqual(rows,original);
+ assert.equal(processingLabel('complete'),'Sheet/PDF updated');
+});

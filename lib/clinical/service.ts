@@ -1,6 +1,6 @@
-import { registryValues } from './usability';
+import { registryValues, caseAttention } from './usability';
 import { editRequestSchema, mergeEdit, auditEdit, same } from './edit';
-import { caseSummary, text } from './research';
+import { caseSummary, text, visitDate } from './research';
 import { fields, SOURCES, FORM_VERSION, type RegistryKind } from './catalog';
 import { newRecord, validateForm, settingsSchema, defaultSettings, safeReceipt, type CaseRecord, type ClinicalSettings } from './model';
 import type { ClinicalRepository } from './repository';
@@ -32,7 +32,7 @@ export function createClinicalService(ports: ClinicalPorts) {
             fail('Clinical submission access is disabled. Contact the clinical owner.');
     } }
     async function list() { const a = await actor(); if (a.owner)
-        return (await repo.all()).map(r => ({ id: r.id, kind: r.kind, owner: r.owner, fellow: r.fellow, year: r.year, status: r.status, revision: r.revision, created: r.created, updated: r.updated, historical: r.historical, processing: r.processing, folderId: r.folderId, trashedAt: r.trashedAt, filterValues: registryValues(r), summary: caseSummary(r), searchText: [r.id, r.fellow, text(r, r.kind === 'ravc' ? 'ravc_B' : 'nodule_B'), ...Object.values(caseSummary(r))].join(' ') })); const rows = await repo.list(); return rows.filter(r => !r.trashedAt && a.memberships.some(m => m.year === r.year && m.id === r.fellow)).map(r => ({ id: r.id, kind: r.kind, status: r.status, year: r.year, created: r.created, updated: r.updated, revision: r.revision, processing: r.processing })); }
+        return (await repo.all()).map(r => ({ id: r.id, kind: r.kind, owner: r.owner, fellow: r.fellow, year: r.year, status: r.status, revision: r.revision, created: r.created, updated: r.updated, historical: r.historical, processing: r.processing, folderId: r.folderId, trashedAt: r.trashedAt, visitDate: visitDate(r), missingInformation: caseAttention(r), filterValues: registryValues(r), summary: caseSummary(r), searchText: [r.id, r.fellow, text(r, r.kind === 'ravc' ? 'ravc_B' : 'nodule_B'), ...Object.values(caseSummary(r))].join(' ') })); const rows = await repo.list(); return rows.filter(r => !r.trashedAt && a.memberships.some(m => m.year === r.year && m.id === r.fellow)).map(r => ({ id: r.id, kind: r.kind, status: r.status, year: r.year, created: r.created, updated: r.updated, revision: r.revision, processing: r.processing })); }
     async function read(id: string) { const a = await actor(); if (!a.owner) {
         const index = (await repo.list()).find(r => r.id === id);
         if (!index || index.trashedAt || index.status !== 'draft' || !a.memberships.some(m => m.year === index.year && m.id === index.fellow))

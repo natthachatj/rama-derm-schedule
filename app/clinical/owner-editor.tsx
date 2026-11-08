@@ -1,6 +1,6 @@
 import { useSavebarInset } from './use-savebar-inset';
 import AttentionList, { jumpToField } from './attention';
-import { attention } from '../../lib/clinical/usability';
+import { caseAttention } from '../../lib/clinical/usability';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Save, ArrowLeft, AlertTriangle } from 'lucide-react';
 import { fields, SOURCES } from '../../lib/clinical/catalog';
@@ -40,7 +40,7 @@ export default function OwnerEditor({ initial, section: initialSection, focusFie
         finally { busy.current = false; setSaving(false); }
     }
     useEffect(() => { if (focusField) jumpToField(focusField); }, [focusField]);
-    const needs = attention(draft);
+    const needs = caseAttention(draft);
     const unresolved = conflict?.items.some(i => !resolutions[i.key]);
     return <section ref={container} className="panel clinical-editor clinical-owner-editor"><div className="panel-head"><div><span className="eyebrow">OWNER EDIT · SECTION ONLY</span><h2>{editSectionTitle(section)}</h2><p className="muted">{SOURCES[initial.kind].title} · {initial.presentationCode}</p></div><button className="button" disabled={saving} onClick={cancel}><ArrowLeft size={16}/>Back to case</button></div>
         {initialSection !== 'followup' && <label>Edit section<select value={section} disabled={dirty || saving} onChange={e => { setSection(e.target.value as EditSection); setError(''); setConflict(undefined); }}>{sections.map(s => <option value={s} key={s}>{editSectionTitle(s)}</option>)}</select>{dirty && <small>Save or cancel these changes before selecting another section.</small>}</label>}

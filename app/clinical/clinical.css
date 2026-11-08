@@ -23,3 +23,12 @@
 .clinical-dose-group{grid-column:1/-1;min-width:0;border:1px solid #bfd9d3;background:#f6fbfa;padding:18px;border-radius:14px}.clinical-dose-group>h3{font-size:16px;color:#19675e}.clinical-dose-group>p,.clinical-event-totals p{font-size:12px;line-height:1.7;color:#667c8c}.clinical-dose-pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin:14px 0}.clinical-dose-pair .clinical-answer-status{flex-wrap:wrap}.clinical-dose-pair .clinical-answer-status button{flex:1;min-width:75px}.clinical-event-totals{padding:14px;border-left:3px solid #168576;background:#f0f9f6;margin:16px 0}@media(max-width:450px){.clinical-dose-group{padding:12px}.clinical-dose-pair{gap:8px}.clinical-dose-pair .clinical-field{padding:10px}.clinical-dose-pair .clinical-answer-status button{font-size:11px;padding:9px 6px;min-width:65px}.clinical-dose-pair input,.clinical-dose-pair select{min-width:0;width:100%}}
 .clinical-event-dose{grid-column:1/-1;margin:0}.clinical-event-dose label{min-width:0}
 .clinical-dose-status{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0}.clinical-dose-status button{min-width:0;min-height:44px;border:1px solid #d6e1ed;background:#fff;color:#39597c;border-radius:9px;padding:9px 6px;font:inherit;font-size:12px;white-space:normal}.clinical-dose-status button[aria-pressed=true]{border:2px solid #3269b6;background:#edf4ff;color:#24589a}.clinical-dose-pair .clinical-dose-value{display:flex;flex-direction:column;gap:8px;font-size:12px;font-weight:600;color:#36526d;margin:0;min-width:0}.clinical-dose-value input,.clinical-dose-value select{min-height:46px;font-size:16px}.clinical-dose-value.invalid{border-left:2px solid #c5303e;padding-left:8px}.clinical-dose-entry>p{font-size:12px;line-height:1.6}.clinical-dose-value .clinical-field-error{font-weight:400}
+
+.clinical-form-icon { position:relative; }
+.clinical-card-dot { position:absolute;right:0;top:0;width:12px;height:12px;border-radius:50%;background:#c73545;border:2px solid white; }
+.clinical-card-attention { margin:12px 0;padding:10px 12px;border:1px solid #ecc2c8;border-radius:12px;background:#fff7f8;color:#922b3a; }
+.clinical-card-attention summary { cursor:pointer;font-size:14px;font-weight:650; }
+.clinical-card-attention p { font-size:13px; }
+.clinical-missing-row { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid #f1d9dd; }
+.clinical-missing-row span { min-width:0;overflow-wrap:anywhere; }
+.clinical-missing-row button { flex-shrink:0;min-height:44px; }
