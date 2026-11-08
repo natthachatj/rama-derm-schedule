@@ -1,7 +1,7 @@
 export type RegistryKind = 'ravc' | 'nodule';
 export const SOURCES = { ravc: { title: 'RAVC complication case', sheetId: '1T9eHLdm84bHKy3uoRY5dsXLEGc_izKhaN3HhtcVd2XI', tab: 'Form Responses 1' }, nodule: { title: 'Injectable-related nodule', sheetId: '13xdpgSqdTvoBkxuYJwYVoMLZRbXXB1KR9sh7SRYNck0', tab: 'Form Responses 1' } } as const;
 export const DRIVE_PARENT = '1fUqfMTRLxfcl_mSKeiLozlNDG1QYWo5P';
-export const FORM_VERSION = 3;
+export const FORM_VERSION = 4;
 export const sectionTitles = ['Patient & referral', 'Injection & history', 'Symptoms & examination', 'Ultrasound', 'Pathology & microbiology', 'Management', 'Follow-up & outcome', 'Other investigations'];
 export type Field = {
     id: string;
@@ -18,6 +18,11 @@ export type Field = {
         field: string;
         values: string[];
     };
+    units?: string[];
+    unit?: string;
+    integer?: boolean;
+    range?: boolean;
+    help?: string;
     min?: number;
     max?: number;
 };
@@ -70,6 +75,63 @@ export function fields(kind: RegistryKind): Field[] {
         base.push({ id: 'nodule_hyal', header: 'Hyaluronidase used', label: 'Hyaluronidase used?', section: 5, type: 'choice', options: yesNo, required: true, extra: true }, { id: 'nodule_hyal_sessions', header: 'Hyaluronidase sessions', label: 'Hyaluronidase sessions', section: 5, type: 'number', min: 0, required: true, extra: true, condition: { field: 'nodule_hyal', values: ['Yes'] } }, { id: 'nodule_hyal_technique', header: 'Hyaluronidase technique', label: 'Hyaluronidase technique', section: 5, type: 'text', required: true, extra: true, condition: { field: 'nodule_hyal', values: ['Yes'] } });
     }
     if (kind === 'ravc') base.push({ id: 'ravc_sex', header: 'Sex at birth', label: 'Sex at birth', section: 0, type: 'choice', options: ['Female', 'Male', 'Intersex', 'Other'], required: false, extra: true });
-    return base;
+    return configureFields(kind, base);
 }
 export const fieldById = (kind: RegistryKind, id: string) => fields(kind).find(f => f.id === id);
+
+function configureFields(kind: RegistryKind, base: Field[]) {
+ const find=(id:string)=>base.find(f=>f.id===kind+'_'+id)!;
+ const add=(id:string,label:string,section:number,type:Field['type'],options?:string[],required=false)=>{base.push({id:kind+'_'+id,header:label,label,section,type,options,required,extra:true,min:type==='number'?0:undefined});return base.at(-1)!;};
+ const options=(id:string,values:string[])=>{const f=find(id);f.options=[...new Set([...(f.options||[]),...values])];};
+ const quantity=(id:string,units:string[],integer=false,range=false)=>Object.assign(find(id),{units,integer,range});
+ if(kind==='ravc') {
+  quantity('D',['years']);quantity('AE',['sessions'],true);quantity('AF',['sessions'],true);quantity('AG',['sessions'],true);
+  find('AE').help='Sessions, cycles and treatment days are separate counts. Keep the original description in notes.';
+  for(const [prefix,title] of [['dissolution','Filler dissolution'],['led','LED'],['hbot','HBOT']]) {
+   add(prefix+'_status',title+' treatment status',5,'choice',['Performed','Not performed','Equipment unavailable','Ongoing','Other'],true);
+   const days=add(prefix+'_days',title+' treatment days',5,'number');days.unit='days';days.integer=true;
+   if(prefix==='hbot')add(prefix+'_hours','HBOT total hours',5,'number').unit='hours';
+   else if(prefix==='dissolution')add(prefix+'_cycles','Filler dissolution total cycles',5,'number').integer=true;
+   add(prefix+'_notes',title+' treatment notes',5,'long');
+  }
+  options('U',['Skin Tightness','Skin discoloration','Ecchymosis','Numbing sensation','Pustules']);
+  options('V',['Purpura','Pustule','Discoloration','Telangiectasia','Erosion']);
+  options('W',['Scalp','Periorbital area','Lip','Mandible']);options('AB',['Ultrasound-guided','Intervention']);
+  Object.assign(find('AI'),{type:'long',options:undefined,required:false,label:'Original outcome / sequelae description'});
+  add('response','Overall clinical response',6,'choice',['Resolved','Improved','Unchanged','Worsened','Other'],true);
+  add('sequelae','Residual sequelae',6,'multi',['None','Pigmentation','Atrophic scar','Hypertrophic scar','Hair loss','Tissue loss','Functional impairment','Other'],true);
+  add('followup_status','Follow-up status',6,'choice',['Ongoing','Completed','Lost to follow-up','Other'],true);
+ } else {
+  quantity('C',['years']);quantity('L',['days','weeks','months','years']);quantity('AC',['days','weeks','months','years']);
+  quantity('O',['mL','threads','mg','vials','Other']);quantity('AK',['nodules'],true,true);quantity('AL',['cm']);quantity('AV',['lesions'],true,true);quantity('AX',['mm']);
+  quantity('CN',['days','weeks','months','years']);quantity('CP',['sessions'],true);quantity('CS',['units','IU']);
+  Object.assign(find('BF'),{type:'choice',options:['0 – Avascular','1 – Minimal','2 – Moderate','3 – Marked']});
+  options('M',['HA (Hyaluronic Acid)','PN','PDO']); options('Q',['Medial cheek','Lateral cheek','Undereye','NLF','Marionette line']);options('R',['Medial cheek','Lateral cheek','Undereye','NLF','Marionette line']);
+  options('S',['Subcutaneous layer','Intramuscular layer','Subdermal']);find('S').type='multi';
+  options('AD',['Early (1–14 days)','Delayed (2 wk–1 yr)','Late (>1 yr)']);
+  options('AF',['Asymptomatic','Pain / tenderness','Palpable nodule','Erythema']);options('AO',['None']);options('AP',['Partially fixed']);
+  options('AR',['Product deposit','Foreign body granuloma','Hypersensitivity reaction']);options('AU',['B-mode (Greyscale)']);options('AZ',['Well-defined','Ill-defined']);
+  Object.assign(find('BB'),{type:'long',options:undefined,required:false,label:'Original internal structure description'});
+  add('homogeneity','Ultrasound homogeneity',3,'choice',['Homogeneous','Heterogeneous','Mixed','Other'],true);
+  add('composition','Ultrasound solid / cystic composition',3,'choice',['Solid','Cystic','Mixed','Other'],true);
+  options('BE',['Internal']);options('BH',['Thickened dermis']);options('BI',['No abnormal nodes']);options('BJ',['None']);
+  Object.assign(find('BO'),{type:'multi'});options('BO',['Lymphocytic infiltrate','Plasmacytic infiltrate']);
+  const pathology:Record<string,string[]>={BP:['None','Foreign body granuloma'],BQ:['Absent','Filler material (amorphous)'],BR:['None','Focal','Extensive'],BS:['None','Mild','Moderate','Severe'],BT:['None','Perivascular inflammation'],BU:['None','Present','Absent','Suspected']};
+  for(const [id,values] of Object.entries(pathology))find(id).options=[...values,'Other'];
+  options('CD',['No growth']);find('CF').options=['Not performed','Done – negative','Done – positive','Pending','Other'];
+  find('CG').condition={field:'nodule_CF',values:['Done – positive']};
+  options('CH',['Foreign body granuloma']);options('CJ',['Procedural intervention','Watchful waiting']);
+  options('CM',['Not prescribed','Corticosteroid oral','ILKA']);options('CO',['Sterile water - mechanical disruption - U/S-guided','Intralesional steroid','Hyaluronidase - U/S-guided','Not done']);options('CT',['Standard dressings']);
+  options('CV',['Minimal response (≤50% improvement)','Partial response (>50% improvement)','Complete resolution']);options('CW',['Excellent (no deformity)','Good (minimal deformity)']);
+  // These investigations depend on their own performance status, not whether a biopsy was performed.
+  find('CC').condition=undefined;find('CF').condition=undefined;find('CH').condition={field:'nodule_BK',values:['Yes']};find('CI').condition={field:'nodule_BK',values:['Yes']};
+  options('CZ',['Yes – specify below']);find('DA').condition={field:'nodule_CZ',values:['Yes','Yes – specify below']};find('DB').condition=find('DA').condition;
+  find('W').help='Prior or coexisting products can be recorded even when no prior filler is confirmed.';find('W').condition=undefined;
+  find('hyal').required=true;
+ }
+ for(const f of base) {
+  if(f.type==='number'&&!f.units&&f.unit===undefined) f.help ||= 'Enter a numerical value. Use an explicit information status when unavailable.';
+  if(f.id!=='nodule_BF'&&f.type==='choice'&&f.options&&!f.options.includes('Other')&&!['Yes','No'].every(v=>f.options!.includes(v)))f.options.push('Other');
+ }
+ return base;
+}

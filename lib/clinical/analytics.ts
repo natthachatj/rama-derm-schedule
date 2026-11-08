@@ -4,7 +4,7 @@ export function combinedCounts(records: CaseRecord[], factor: keyof typeof share
     ravc: number;
     nodule: number;
 }>(); let missing = 0; for (const r of rows) {
-    const a = r.answers[sharedKeys[factor][r.kind]];
+    const a = r.answers[factor==='outcome'&&r.kind==='ravc'&&r.answers.ravc_response?'ravc_response':sharedKeys[factor][r.kind]];
     if (!a || a.state !== 'recorded' || !a.value.length) {
         missing++;
         continue;

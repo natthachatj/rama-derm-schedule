@@ -1,9 +1,12 @@
 import { doseIds, doseHeaders } from '../../../lib/clinical/dose';
 import { getStore } from '@netlify/blobs';
 import { GoogleClient } from './google';
-import { SOURCES, column, fields, type RegistryKind } from '../../../lib/clinical/catalog';
-import { defaultSettings, type CaseRecord, type ClinicalSettings } from '../../../lib/clinical/model';
+import { SOURCES, column, fields, type RegistryKind, type Field } from '../../../lib/clinical/catalog';
+import { answerText, defaultSettings, type CaseRecord, type ClinicalSettings } from '../../../lib/clinical/model';
 import type { ClinicalRepository, RecordIndex } from '../../../lib/clinical/repository';
+export const quantityHeaders=(f:Field)=>[f.header+' — unit',...(f.range?[f.header+' — upper count']:[]),f.header+' — notes'];
+export const sourceValue=(f:Field,a?:CaseRecord['answers'][string])=>f.type==='number'&&a?.state==='recorded'&&!Array.isArray(a.value)?a.value:answerText(a);
+export const structuredHeaders=['Registry Structured Answers','Registry Structured Answers 2','Registry Structured Answers 3','Registry Structured Answers 4'];
 const INDEX = ['Record ID', 'Owner principal', 'Cohort', 'Status', 'Revision', 'Form version', 'Created', 'Updated', 'Index JSON', 'Data 1', 'Data 2', 'Data 3', 'Data 4'];
 const quote = (s: string) => "'" + s.replace(/'/g, "''") + "'";
 export const registryIdHeader = 'Registry Record ID';
@@ -90,18 +93,21 @@ export class SheetsRepository implements ClinicalRepository {
     async settings() { const row = (await this.google.values(SOURCES.ravc.sheetId, "'Registry Settings'!A2:B2"))[0]; return row?.[1] ? { ...defaultSettings, ...JSON.parse(row[1]) } : structuredClone(defaultSettings); }
     async saveSettings(settings: ClinicalSettings) { await this.google.update(SOURCES.ravc.sheetId, "'Registry Settings'!A2:B2", [['settings', JSON.stringify(settings)]]); }
     async sourceHeaders(kind: RegistryKind) { return (await this.google.values(SOURCES[kind].sheetId, quote(SOURCES[kind].tab) + '!1:1'))[0] as string[] || []; }
-    async synchronize(r: CaseRecord) { const kind = r.kind, id = SOURCES[kind].sheetId, headers = await this.sourceHeaders(kind), idColumn = headers.indexOf(registryIdHeader); if (idColumn < 0)
+    async synchronize(r: CaseRecord) { const kind = r.kind, id = SOURCES[kind].sheetId, headers = await this.ensureStructuredHeaders(kind), idColumn = headers.indexOf(registryIdHeader); if (idColumn < 0)
         throw Error('Registry Record ID column is missing. Review setup first.'); const sourceRows = await this.google.values(id, `${quote(SOURCES[kind].tab)}!A2:${column(idColumn)}`); const matches = sourceRows.flatMap((row: any[], i: number) => row[idColumn] === r.id ? [i + 2] : []); if (matches.length > 1)
         throw Error('Duplicate source ID. Resolve this in the spreadsheet before retrying.'); if (!matches.length) {
         const values = Array(headers.length).fill('');
         for (const field of fields(kind)) {
-            if (field.system || field.extra && !doseIds.includes(field.id as any))
+            if (field.system)
                 continue;
             const at = headers.indexOf(field.header);
             if (at < 0) { if(doseIds.includes(field.id as any) && !r.answers.ravc_dissolution_total) continue; throw Error('Source headers changed or structured dose columns are missing. Review spreadsheet setup before retrying.'); }
             const a = r.answers[field.id];
-            values[at] = !a ? 'Not recorded' : a.state === 'recorded' ? Array.isArray(a.value) ? a.value.join(', ') : a.value : a.state.replaceAll('_', ' ');
+            values[at] = sourceValue(field,a);
+            if(field.type==='number'){const companion=[a?.unit||field.unit||'',...(field.range?[a?.upper||'']:[]),a?.details||''];quantityHeaders(field).forEach((h,i)=>values[headers.indexOf(h)]=companion[i]);}
         }
+        const structured=JSON.stringify(r.answers);if(structured.length>170000)throw Error('Structured answers exceed the spreadsheet capacity.');
+        structuredHeaders.forEach((h,i)=>values[headers.indexOf(h)]=structured.slice(i*44000,(i+1)*44000));
         values[idColumn] = r.id;
         const timestamp = headers.indexOf('Timestamp');
         if (timestamp >= 0)
@@ -109,17 +115,31 @@ export class SheetsRepository implements ClinicalRepository {
         await this.google.append(id, `${quote(SOURCES[kind].tab)}!A:${column(headers.length - 1)}`, [values]);
         return;
     } const rowNumber = matches[0]; const writes: any[] = []; for (const field of fields(kind)) {
-        if (field.system || field.extra && !doseIds.includes(field.id as any))
+        if (field.system)
             continue;
+        if(r.historical && !field.extra && !r.answers[field.id]?.corrected)continue;
         const at = headers.findIndex(h => h === field.header);
         if (at < 0) { if(doseIds.includes(field.id as any) && !r.answers.ravc_dissolution_total) continue; throw Error('Source headers changed or structured dose columns are missing. Review spreadsheet setup before retrying.'); }
         const a = r.answers[field.id];
-        writes.push({ range: `${quote(SOURCES[kind].tab)}!${column(at)}${rowNumber}`, values: [[!a ? 'Not recorded' : a.state === 'recorded' ? Array.isArray(a.value) ? a.value.join(', ') : a.value : a.state.replaceAll('_', ' ')]] });
-    } writes.push({ range: `${quote(SOURCES[kind].tab)}!${column(idColumn)}${rowNumber}`, values: [[r.id]] }); if (!r.historical) {
+        writes.push({ range: `${quote(SOURCES[kind].tab)}!${column(at)}${rowNumber}`, values: [[sourceValue(field,a)]] });
+        if(field.type==='number'){const companion=[a?.unit||field.unit||'',...(field.range?[a?.upper||'']:[]),a?.details||''];quantityHeaders(field).forEach((h,i)=>writes.push({range:`${quote(SOURCES[kind].tab)}!${column(headers.indexOf(h))}${rowNumber}`,values:[[companion[i]]]}));}
+    } const structured=JSON.stringify(r.answers);if(structured.length>170000)throw Error('Structured answers exceed the spreadsheet capacity.'); structuredHeaders.forEach((h,i)=>writes.push({range:`${quote(SOURCES[kind].tab)}!${column(headers.indexOf(h))}${rowNumber}`,values:[[structured.slice(i*44000,(i+1)*44000)]]})); writes.push({ range: `${quote(SOURCES[kind].tab)}!${column(idColumn)}${rowNumber}`, values: [[r.id]] }); if (!r.historical) {
         const timestamp = headers.indexOf('Timestamp');
         if (timestamp >= 0)
             writes.push({ range: `${quote(SOURCES[kind].tab)}!${column(timestamp)}${rowNumber}`, values: [[r.submittedAt || r.created]] });
     } await this.google.request(`sheets/v4/spreadsheets/${id}/values:batchUpdate`, 'POST', { valueInputOption: 'RAW', data: writes }); }
+    async ensureStructuredHeaders(kind:RegistryKind) {
+        const id=SOURCES[kind].sheetId, headers=await this.sourceHeaders(kind);
+        const expected=[...fields(kind).filter(f=>f.extra).map(f=>f.header),...fields(kind).filter(f=>f.type==='number').flatMap(quantityHeaders),...structuredHeaders];
+        const missing=expected.filter(h=>!headers.includes(h));
+        if(!missing.length)return headers;
+        const meta=await this.google.request(`sheets/v4/spreadsheets/${id}?fields=sheets(properties)`), source=meta.sheets.find((s:any)=>s.properties.title===SOURCES[kind].tab);
+        if(!source)throw Error('Source response tab is missing. Review spreadsheet setup.');
+        const needed=headers.length+missing.length-source.properties.gridProperties.columnCount;
+        if(needed>0)await this.google.request(`sheets/v4/spreadsheets/${id}:batchUpdate`,'POST',{requests:[{appendDimension:{sheetId:source.properties.sheetId,dimension:'COLUMNS',length:needed}}]});
+        await this.google.update(id,`${quote(SOURCES[kind].tab)}!${column(headers.length)}1:${column(headers.length+missing.length-1)}1`,[missing]);
+        return [...headers,...missing];
+    }
     async inspect() { const result: any[] = []; for (const kind of ['ravc', 'nodule'] as const) {
         const meta = await this.google.request(`sheets/v4/spreadsheets/${SOURCES[kind].sheetId}?fields=spreadsheetId,sheets(properties)`), headers = await this.sourceHeaders(kind);
         const expected = fields(kind).filter(f => !f.extra).map(f => f.header);

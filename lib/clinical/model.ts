@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { conditionMet, malformed, chronology, reviewIssues } from './review';
 import { outcomesSchema } from './outcomes';
 import { fields, FORM_VERSION, type RegistryKind, type Field } from './catalog';
 export const answerStates = ['recorded', 'none', 'unknown', 'not_assessed', 'not_applicable', 'not_recorded'] as const;
 export const stateLabels: Record<string, string> = { recorded: 'Recorded', none: 'None', unknown: 'Unknown', not_assessed: 'Not assessed', not_applicable: 'Not applicable', not_recorded: 'Not recorded' };
-export const answerSchema = z.object({ state: z.enum(answerStates), value: z.union([z.string().max(6000), z.array(z.string().max(300)).max(30)]).default(''), precision: z.enum(['day', 'minute']).optional() });
+export const answerSchema = z.object({ state: z.enum(answerStates), value: z.union([z.string().max(6000), z.array(z.string().max(300)).max(30)]).default(''), precision: z.enum(['day', 'minute']).optional(), unit:z.string().max(40).optional(), upper:z.string().max(40).optional(), details:z.string().max(2000).optional(), sequenceException:z.string().max(1500).optional(), corrected:z.boolean().optional() });
 export type Answer = z.infer<typeof answerSchema>;
 export const eventSchema = z.object({ id: z.string().uuid(), type: z.enum(['Injection', 'History', 'Investigation', 'Treatment', 'Follow-up']), date: z.string().max(10), datePrecision: z.enum(['day', 'month', 'year', 'unknown']), title: z.string().trim().min(1).max(160), details: z.string().max(6000), amount: z.string().max(100).optional(), unit: z.string().max(40).optional(), response: z.string().max(2000).optional(), agent:z.string().max(120).optional(), route:z.string().max(120).optional() });
 export type CaseEvent = z.infer<typeof eventSchema>;
@@ -48,11 +49,13 @@ export const settingsSchema = z.object({ font: z.enum(['Sarabun', 'Arial', 'Apto
 export type ClinicalSettings = z.infer<typeof settingsSchema>;
 export const defaultSettings: ClinicalSettings = { font: 'Sarabun', titleColor: '16376B', bodyColor: '24334A', background: 'FFFFFF', titleSize: 30, bodySize: 18, footer: 'RAMA Dermatology · information-only case summary', disabledFellows: [], extraChoices: {} };
 export const emptyForm = (kind: RegistryKind): CaseForm => ({ kind, answers: {}, events: [] });
-export const answerText = (a?: Answer) => !a ? 'Not recorded' : a.state === 'recorded' ? Array.isArray(a.value) ? a.value.join(', ') : a.value : stateLabels[a.state];
-export function visible(f: Field, answers: Record<string, Answer>) { if (f.system)
-    return false; if (!f.condition)
-    return true; const a = answers[f.condition.field]; return a?.state === 'recorded' && (f.condition.values.includes('*') || f.condition.values.includes(String(a.value))); }
-export function validateForm(input: unknown, submit = false) {
+export const answerText = (a?: Answer):string => {
+ if(!a)return 'Not recorded';
+ const value=a.state==='recorded'?(Array.isArray(a.value)?a.value.join(', '):a.value)+(a.upper?'–'+a.upper:'')+(a.unit?' '+a.unit:''):stateLabels[a.state];
+ return value+(a.details?' · '+a.details:'');
+};
+export function visible(f: Field, answers: Record<string, Answer>) {return !f.system&&(conditionMet(f,answers)||answers[f.id]?.state==='recorded' && (Array.isArray(answers[f.id].value)?answers[f.id].value.length>0:!!String(answers[f.id].value).trim()));}
+export function validateForm(input: unknown, submit = false, extraChoices:Record<string,string[]> = {}) {
     const f = formSchema.parse(input), allowed = new Set(fields(f.kind).filter(x => !x.system).map(x => x.id));
     for (const k of Object.keys(f.answers))
         if (!allowed.has(k))
@@ -72,13 +75,13 @@ export function validateForm(input: unknown, submit = false) {
         if (!a || a.state !== 'recorded')
             continue;
         const text = Array.isArray(a.value) ? a.value.join(', ') : a.value;
-        if (field.type === 'number' && (text.trim() === '' || !Number.isFinite(Number(text)) || Number(text) < (field.min ?? 0) || Number(text) > (field.max ?? 1e9)))
-            errors.push({ field: field.id, message: `${field.label}: enter a valid number${field.max !== undefined ? ' from ' + (field.min ?? 0) + ' to ' + field.max : ''}.` });
-        if (field.type === 'date' || field.type === 'datetime') {
-            const pattern = field.type === 'date' || a.precision === 'day' ? /^\d{4}-\d{2}-\d{2}$/ : /^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/;
-            if (!pattern.test(text) || !validDay(text.slice(0, 10)))
-                errors.push({ field: field.id, message: `${field.label}: choose a valid date.` });
-        }
+        if(submit && a.unit==='Other' && !(a.details||'').trim())errors.push({field:field.id,message:field.label+': describe the Other unit in notes.'});
+        if(submit && field.options && (Array.isArray(a.value)?a.value:field.type==='multi'?String(a.value).split(', '):[a.value]).some(v=>![...field.options!,...(extraChoices[field.id]||[])].includes(v)))errors.push({field:field.id,message:field.label+': select a supported choice, or use Other with details.'});
+        if(submit && field.condition && !conditionMet(field,f.answers) && text.trim())errors.push({field:field.id,message:field.label+': saved details conflict with the parent answer. Review both answers before submitting.'});
+        const problem=malformed(field,a);
+        if(problem)errors.push({field:field.id,message:field.label+': '+problem});
+        if(submit && field.units && a.state==='recorded' && !a.unit)errors.push({field:field.id,message:field.label+': select the quantity unit.'});
+        if(submit && field.options && (Array.isArray(a.value)?a.value:[a.value]).includes('Other') && !(a.details||'').trim())errors.push({field:field.id,message:field.label+': describe Other in the notes.'});
     }
     if (f.kind === 'ravc') {
         const total=f.answers.ravc_dissolution_total,unit=f.answers.ravc_dissolution_unit;
@@ -87,6 +90,8 @@ export function validateForm(input: unknown, submit = false) {
         if(submit && agents?.state==='recorded' && (Array.isArray(agents.value)?agents.value:[agents.value]).some(v=>v.trim()&&!/^(none|no|not applicable|-)$/i.test(v.trim())) && !(total && ['recorded','unknown'].includes(total.state)) && !(f.answers.ravc_AD?.state==='recorded' && String(f.answers.ravc_AD.value).trim()) && !f.events.some(e=>e.type==='Treatment'&&e.agent&&e.amount&&e.unit)) errors.push({field:'ravc_dissolution_total',message:'Dissolution dose: record a total with its unit, provide a dose description/treatment entry, or choose Dose unknown.'});
         if(total?.state==='recorded' && Array.isArray(agents?.value) && agents!.state==='recorded' && agents!.value.length>1) errors.push({field:'ravc_dissolution_total',message:'Several dissolution agents are selected. Record separate doses in treatment events; do not combine them into one total.'});
     }
+    if(submit)for(const issue of reviewIssues(f,extraChoices).filter(i=>i.message.includes('positive session count')))errors.push({field:issue.field,message:issue.message});
+    for(const issue of chronology(f))errors.push({field:issue.field,message:issue.message});
     for (const e of f.events) {
         if (e.datePrecision === 'unknown') {
             if (e.date)
@@ -100,9 +105,6 @@ export function validateForm(input: unknown, submit = false) {
             errors.push({ field: 'events', message: `${e.title}: add a dose/amount unit.` });
     }
     const get = (k: string) => { const a = f.answers[k]; return a?.state === 'recorded' && typeof a.value === 'string' ? a.value : ''; };
-    const injection = get(f.kind === 'ravc' ? 'ravc_O' : 'nodule_J'), visit = get(f.kind === 'ravc' ? 'ravc_Q' : 'nodule_K');
-    if (injection && visit && injection.slice(0, 10) > visit.slice(0, 10))
-        errors.push({ field: f.kind === 'ravc' ? 'ravc_Q' : 'nodule_K', message: 'First RAMA/RAVC visit cannot precede the recorded injection date. Check the dates.' });
     if (f.outcomes?.firstTreatment) { const onset = get(f.kind === 'ravc' ? 'ravc_P' : 'nodule_AB').slice(0, 10); if (validDay(onset) && f.outcomes.firstTreatment < onset) errors.push({ field: 'outcomes', message: 'First RAVC treatment cannot precede symptom onset. Check the dates.' }); }
     return { form: f, errors };
 }

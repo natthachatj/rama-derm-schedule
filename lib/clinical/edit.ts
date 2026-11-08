@@ -7,7 +7,7 @@ export type EditSection = z.infer<typeof editRequestSchema>['section'];
 export type EditChange = { key: string; value: unknown };
 export type EditConflict = { revision: number; items: { key: string; label: string; mine: unknown; latest: unknown }[] };
 export const editSectionTitle = (s: EditSection) => s === 'events' ? 'History & management timeline' : s === 'outcomes' ? 'Outcome & follow-up' : s === 'followup' ? 'Add follow-up' : sectionTitles[Number(s)];
-function canonical(value: unknown): unknown { if (Array.isArray(value)) return value.map(canonical); if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, canonical(v)])); return value; }
+function canonical(value: unknown): unknown { if (Array.isArray(value)) return value.map(canonical); if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).filter(([k, v]) => v !== undefined && k !== 'corrected').sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, canonical(v)])); return value; }
 export const same = (a: unknown, b: unknown) => JSON.stringify(canonical(a ?? null)) === JSON.stringify(canonical(b ?? null));
 export function editItems(r: CaseForm, section: EditSection): Record<string, unknown> {
     if (/^[0-7]$/.test(section)) return Object.fromEntries(fields(r.kind).filter(f => !f.system && f.section === Number(section)).map(f => ['answer:' + f.id, r.answers[f.id] || null]));

@@ -1,3 +1,4 @@
+import { preserveCorrections, reviewIssues } from './review';
 import { registryValues, caseAttention } from './usability';
 import { editRequestSchema, mergeEdit, auditEdit, same } from './edit';
 import { caseSummary, text, visitDate } from './research';
@@ -31,8 +32,8 @@ export function createClinicalService(ports: ClinicalPorts) {
         if (s.disabledFellows.includes(`${r.year}:${r.fellow}`))
             fail('Clinical submission access is disabled. Contact the clinical owner.');
     } }
-    async function list() { const a = await actor(); if (a.owner)
-        return (await repo.all()).map(r => ({ id: r.id, kind: r.kind, owner: r.owner, fellow: r.fellow, year: r.year, status: r.status, revision: r.revision, created: r.created, updated: r.updated, historical: r.historical, processing: r.processing, folderId: r.folderId, trashedAt: r.trashedAt, visitDate: visitDate(r), missingInformation: caseAttention(r), filterValues: registryValues(r), summary: caseSummary(r), searchText: [r.id, r.fellow, text(r, r.kind === 'ravc' ? 'ravc_B' : 'nodule_B'), ...Object.values(caseSummary(r))].join(' ') })); const rows = await repo.list(); return rows.filter(r => !r.trashedAt && a.memberships.some(m => m.year === r.year && m.id === r.fellow)).map(r => ({ id: r.id, kind: r.kind, status: r.status, year: r.year, created: r.created, updated: r.updated, revision: r.revision, processing: r.processing })); }
+    async function list() { const a = await actor(), choices=a.owner?(await repo.settings()).extraChoices:{}; if (a.owner)
+        return (await repo.all()).map(r => ({ id: r.id, kind: r.kind, owner: r.owner, fellow: r.fellow, year: r.year, status: r.status, revision: r.revision, created: r.created, updated: r.updated, historical: r.historical, processing: r.processing, folderId: r.folderId, trashedAt: r.trashedAt, visitDate: visitDate(r), missingInformation: caseAttention(r), reviewInformation: reviewIssues(r,choices), filterValues: registryValues(r), summary: caseSummary(r), searchText: [r.id, r.fellow, text(r, r.kind === 'ravc' ? 'ravc_B' : 'nodule_B'), ...Object.values(caseSummary(r))].join(' ') })); const rows = await repo.list(); return rows.filter(r => !r.trashedAt && a.memberships.some(m => m.year === r.year && m.id === r.fellow)).map(r => ({ id: r.id, kind: r.kind, status: r.status, year: r.year, created: r.created, updated: r.updated, revision: r.revision, processing: r.processing })); }
     async function read(id: string) { const a = await actor(); if (!a.owner) {
         const index = (await repo.list()).find(r => r.id === id);
         if (!index || index.trashedAt || index.status !== 'draft' || !a.memberships.some(m => m.year === index.year && m.id === index.fellow))
@@ -44,13 +45,13 @@ export function createClinicalService(ports: ClinicalPorts) {
         fail('Fellow access required.'); const r = newRecord(kind, a.principal, fellow, year, now()); await checkEnabled(a, r); await repo.put(r, a.principal, 'Draft created'); return r; }); }
     async function save(id: string, revision: number, input: unknown, submit = false, reason = '') { return ports.lock(async () => { const a = await actor(), r = await read(id); if (r.revision !== revision)
         fail('This case changed in another window. Reload before saving.'); if (r.status !== 'draft' && !a.owner)
-        fail('Submitted records are locked.'); const { form, errors } = validateForm(input, submit); if (form.kind !== r.kind)
+        fail('Submitted records are locked.'); const { form, errors } = validateForm(input, submit,(await repo.settings()).extraChoices); if (form.kind !== r.kind)
         fail('Cannot change registry type.'); if (errors.length) {
         const e = new Error(errors[0].message);
         (e as any).validation = errors;
         throw e;
     } if (r.status !== 'draft' && reason.trim().length < 3)
-        fail('Enter a reason for editing this submitted record.'); const next: CaseRecord = { ...r, ...form, formVersion: FORM_VERSION, revision: r.revision + 1, updated: now(), ...(submit ? { status: 'submitted', submittedAt: now(), processing: 'pending', processingError: undefined } : {}) }; if (r.status !== 'draft')
+        fail('Enter a reason for editing this submitted record.'); const next: CaseRecord = preserveCorrections(r, { ...r, ...form, formVersion: FORM_VERSION, revision: r.revision + 1, updated: now(), ...(submit ? { status: 'submitted', submittedAt: now(), processing: 'pending', processingError: undefined } : {}) }); if (r.status !== 'draft')
         next.processing = 'pending'; await repo.put(next, a.principal, submit ? 'Submitted' : r.status === 'draft' ? 'Draft saved' : 'Clinical edit: ' + reason.trim()); return a.owner || !submit ? next : safeReceipt(next); }); }
     async function edit(id: string, input: unknown) { return ports.lock(async () => {
         const a = await actor(); if (!a.owner) fail('Clinical-owner access required.');
@@ -63,11 +64,11 @@ export function createClinicalService(ports: ClinicalPorts) {
         const merged = mergeEdit(base, latest, request);
         if (merged.conflict) return { conflict: merged.conflict };
         if (!merged.changed.length) return { record: latest, unchanged: true };
-        const validation = validateForm(merged.record, false), oldErrors = validateForm(latest, false).errors;
+        const validation = validateForm(merged.record, false,(await repo.settings()).extraChoices), oldErrors = validateForm(latest, false,(await repo.settings()).extraChoices).errors;
         const touched = new Set(merged.changed.map(k => k.startsWith('answer:') ? k.slice(7) : k.startsWith('event:') ? 'events' : 'outcomes'));
         const errors = validation.errors.filter(e => touched.has(e.field) || !oldErrors.some(old => old.field === e.field && old.message === e.message));
         if (errors.length) { const e = new Error(errors[0].message); (e as any).validation = errors; throw e; }
-        const next: CaseRecord = { ...merged.record, ...validation.form, revision: latest.revision + 1, formVersion: FORM_VERSION, updated: now(), processing: 'pending', processingError: undefined };
+        const next: CaseRecord = preserveCorrections(latest, { ...merged.record, ...validation.form, revision: latest.revision + 1, formVersion: FORM_VERSION, updated: now(), processing: 'pending', processingError: undefined });
         await repo.put(next, a.principal, auditEdit(next.kind, merged.changed, request.note));
         return { record: next };
     }); }

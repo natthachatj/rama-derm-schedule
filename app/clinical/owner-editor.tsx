@@ -1,6 +1,6 @@
 import { useSavebarInset } from './use-savebar-inset';
 import AttentionList, { jumpToField } from './attention';
-import { caseAttention } from '../../lib/clinical/usability';
+import { caseAttention, legacyReview } from '../../lib/clinical/usability';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Save, ArrowLeft, AlertTriangle } from 'lucide-react';
 import { fields, SOURCES } from '../../lib/clinical/catalog';
@@ -40,7 +40,7 @@ export default function OwnerEditor({ initial, section: initialSection, focusFie
         finally { busy.current = false; setSaving(false); }
     }
     useEffect(() => { if (focusField) jumpToField(focusField); }, [focusField]);
-    const needs = caseAttention(draft);
+    const needs = [...caseAttention(draft),...legacyReview(draft,extraChoices)];
     const unresolved = conflict?.items.some(i => !resolutions[i.key]);
     return <section ref={container} className="panel clinical-editor clinical-owner-editor"><div className="panel-head"><div><span className="eyebrow">OWNER EDIT · SECTION ONLY</span><h2>{editSectionTitle(section)}</h2><p className="muted">{SOURCES[initial.kind].title} · {initial.presentationCode}</p></div><button className="button" disabled={saving} onClick={cancel}><ArrowLeft size={16}/>Back to case</button></div>
         {initialSection !== 'followup' && <label>Edit section<select value={section} disabled={dirty || saving} onChange={e => { setSection(e.target.value as EditSection); setError(''); setConflict(undefined); }}>{sections.map(s => <option value={s} key={s}>{editSectionTitle(s)}</option>)}</select>{dirty && <small>Save or cancel these changes before selecting another section.</small>}</label>}
@@ -49,7 +49,7 @@ export default function OwnerEditor({ initial, section: initialSection, focusFie
         <AttentionList form={draft} owner extraChoices={extraChoices} canJump={i=>!dirty || i.section===section} onJump={i=>{setSection(i.section);jumpToField(i.field);}}/>
         {conflict && <section className="clinical-conflicts" aria-label="Resolve changed information"><h3>Choose the values to save</h3><p>Other saved information will be preserved. If the case changes again, we will check again before saving.</p>{conflict.items.map(item => <fieldset key={item.key} disabled={saving}><legend>{item.label}</legend><label className="clinical-conflict-choice"><input type="radio" name={'resolve-' + item.key} checked={resolutions[item.key] === 'mine'} onChange={() => setResolutions({ ...resolutions, [item.key]: 'mine' })}/><span><strong>Use my value</strong><pre>{displayValue(item.mine)}</pre></span></label><label className="clinical-conflict-choice"><input type="radio" name={'resolve-' + item.key} checked={resolutions[item.key] === 'latest'} onChange={() => setResolutions({ ...resolutions, [item.key]: 'latest' })}/><span><strong>Keep latest saved value</strong><pre>{displayValue(item.latest)}</pre></span></label></fieldset>)}</section>}
         <fieldset className="clinical-owner-fields" disabled={saving}>
-        {/^[0-7]$/.test(section) && <div className="clinical-fields"><ClinicalFields form={draft} section={Number(section)} extraChoices={extraChoices} issues={needs} onChange={(id,value)=>update({...draft,answers:{...draft.answers,[id]:value}})}/></div>}
+        {/^[0-7]$/.test(section) && <div className="clinical-fields"><ClinicalFields originals={initial.sourceRaw} form={draft} section={Number(section)} extraChoices={extraChoices} issues={needs} onChange={(id,value)=>update({...draft,answers:{...draft.answers,[id]:value}})}/></div>}
         {section === 'events' && <div id="field-events"><EventEditor events={draft.events} onChange={events => update({ ...draft, events })}/></div>}
         {(section === 'outcomes' || section === 'followup') && <div id="field-outcomes"><OutcomeEditor value={draft.outcomes} onlyFollowup={section === 'followup' ? newVisitId : undefined} onChange={outcomes => update({ ...draft, outcomes })}/></div>}
         {section === 'followup' && <p className="muted">For healing-time analysis, record the actual healing date in Outcome & follow-up when known; an examination showing a healed wound is not automatically its exact healing date.</p>}
