@@ -2,6 +2,9 @@ import { fields, type Field } from './catalog';
 import type { Answer, CaseForm, CaseRecord } from './model';
 export type ReviewIssue = {field:string;label:string;message:string;section:string;review:true};
 export const values=(a?:Answer):string[]=>a?.state==='recorded'?(Array.isArray(a.value)?a.value:String(a.value).split(', ')).filter(Boolean):[];
+export const storedText=(a?:Answer)=>!a?'':Array.isArray(a.value)?a.value.join(', '):a.value;
+export const retainedText=(a?:Answer)=>a?.state!=='recorded'?storedText(a):'';
+export const meaningfulOriginal=(s:string)=>!!s.trim()&&!/^(none|n\/?a|not applicable|not recorded|unknown|not assessed|-)$/i.test(s.trim());
 export const rawValue=(a?:Answer)=>a?.state==='recorded'?(Array.isArray(a.value)?a.value.join(', '):a.value):'';
 export function conditionMet(f:Field,answers:Record<string,Answer>) {if(!f.condition)return true;const a=answers[f.condition.field];return a?.state==='recorded'&&(f.condition.values.includes('*')||f.condition.values.includes(String(a.value)));}
 export function hasAnswer(a?:Answer){return !!a&&(a.state!=='not_recorded')&&(a.state!=='recorded'||!!rawValue(a).trim());}
@@ -23,11 +26,13 @@ export function chronology(form:CaseForm) {
  const pairs=form.kind==='ravc'?[['ravc_O','ravc_P'],['ravc_O','ravc_Q'],['ravc_P','ravc_Q'],['ravc_Q','ravc_R']]:[['nodule_J','nodule_AB'],['nodule_J','nodule_K'],['nodule_AB','nodule_K'],['nodule_K','nodule_CK']];
  return pairs.flatMap(([before,after])=>{const a=form.answers[before],b=form.answers[after],x=rawValue(a),y=rawValue(b);if(!validClinicalDay(x.slice(0,10))||!validClinicalDay(y.slice(0,10)))return [];const dayOnly=x.length===10||y.length===10;const bad=dayOnly?y.slice(0,10)<x.slice(0,10):y<x;const signature=before+':'+x+'|'+after+':'+y;if(!bad||b?.sequenceException?.split('\n').includes(signature)&&(b.details||'').trim().length>=3)return [];return [{field:after,before,signature,message:'This date/time precedes '+(fields(form.kind).find(f=>f.id===before)?.label||before)+'. Correct it, or document and confirm a clinical exception.'}];});
 }
-export function reviewIssues(form:CaseForm,extraChoices:Record<string,string[]>={}):ReviewIssue[] {
+export function reviewIssues(form:CaseForm & {sourceRaw?:Record<string,string>},extraChoices:Record<string,string[]>={}):ReviewIssue[] {
  const all=fields(form.kind),issues:ReviewIssue[]=[];
  const add=(f:Field,message:string)=>issues.push({field:f.id,label:f.label,section:String(f.section),message,review:true});
  for(const f of all.filter(f=>!f.system)) {
   const a=form.answers[f.id],s=rawValue(a),problem=malformed(f,a);
+  const original=form.sourceRaw?.[f.header]||'';
+  if(!a?.corrected&&((a?.state!=='recorded'&&(meaningfulOriginal(retainedText(a))||meaningfulOriginal(original)))||!storedText(a).trim()&&meaningfulOriginal(original)))add(f,'Saved information is retained behind an unavailable or missing status. Review the original text and status manually; neither has been changed.');
   if(problem)add(f,problem);
   if(a?.state==='recorded'&&f.options){const opts=[...f.options,...(extraChoices[f.id]||[])];if(values(a).some(v=>!opts.includes(v)))add(f,'Saved choice is outside the current options. Review its meaning; the original selection remains visible.');}
   if(f.condition&&!conditionMet(f,form.answers)&&a?.state==='recorded'&&s.trim())add(f,'Saved information exists although its parent answer does not enable this question. Review both answers; this content remains visible.');
@@ -51,7 +56,7 @@ export function preserveCorrections(previous:CaseRecord,next:CaseRecord) {
   const clean=(x?:Answer)=>x?JSON.stringify({...x,corrected:undefined}):'';
   if(clean(old)!==clean(a)) {
    if(a)a.corrected=true;
-   if(old&&hasAnswer(old)){result.sourceRaw||={};if(result.sourceRaw[f.header]===undefined)result.sourceRaw[f.header]=(old.state==='recorded'?rawValue(old)+(old.upper?'–'+old.upper:'')+(old.unit?' '+old.unit:''):old.state.replaceAll('_',' '))+(old.details?' · '+old.details:'');}
+   if(old&&(hasAnswer(old)||storedText(old).trim())){result.sourceRaw||={};if(result.sourceRaw[f.header]===undefined)result.sourceRaw[f.header]=(old.state==='recorded'?rawValue(old)+(old.upper?'–'+old.upper:'')+(old.unit?' '+old.unit:''):old.state.replaceAll('_',' ')+(storedText(old)?' · Retained saved text: '+storedText(old):''))+(old.details?' · '+old.details:'');}
   }else if(a){if(old?.corrected)a.corrected=true;else delete a.corrected;}
  }
  return result;

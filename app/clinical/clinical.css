@@ -33,3 +33,13 @@
 .clinical-missing-row span { min-width:0;overflow-wrap:anywhere; }
 .clinical-missing-row button { flex-shrink:0;min-height:44px; }
 .clinical-original-panel{padding:14px 16px;background:#fff8e9;border:1px solid #e4bc70;border-radius:12px;color:#704a17;margin:10px 0;max-width:100%;overflow-wrap:anywhere}.clinical-original-panel pre{white-space:pre-wrap;font:inherit;margin:8px 0;overflow-wrap:anywhere;word-break:break-word}.clinical-original-panel summary{cursor:pointer;font-weight:650}.clinical-field.needs-review{border-color:#d59b3e;background:#fffaf1}.clinical-quantity-row{display:flex;align-items:end;gap:12px;flex-wrap:wrap}.clinical-quantity-row label{flex:1 1 150px;min-width:0}.clinical-review-attention{background:#fff8e9!important;border-color:#e4bc70!important;color:#704a17!important}.clinical-original-panel strong{display:block}.clinical-field small{display:block;margin:6px 0}.clinical-field textarea{width:100%}
+
+/* Dose cards must fit their container, including narrow embedded/mobile editors. */
+.clinical-field,.clinical-dose-group,.clinical-dose-pair,.clinical-dose-pair>*{min-width:0;max-width:100%;box-sizing:border-box}
+.clinical-dose-pair{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));align-items:start}
+.clinical-answer-status{grid-template-columns:repeat(2,minmax(0,1fr))}
+.clinical-answer-status button,.clinical-dose-pair .clinical-answer-status button{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere;line-height:1.4;box-sizing:border-box}
+.clinical-field input,.clinical-field select,.clinical-field textarea{min-width:0;max-width:100%;box-sizing:border-box}
+.clinical-quantity-row>label{max-width:100%;min-width:0}
+@media(max-width:760px){.clinical-dose-pair{grid-template-columns:minmax(0,1fr);gap:12px}.clinical-dose-group{padding:12px}.clinical-dose-pair .clinical-field{padding:14px}.clinical-dose-pair .clinical-answer-status button{font-size:12px;padding:10px;min-height:44px}}
+@container(max-width:700px){.clinical-dose-pair{grid-template-columns:minmax(0,1fr)}}

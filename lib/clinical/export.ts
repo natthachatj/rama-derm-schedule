@@ -1,4 +1,4 @@
-import { reviewIssues } from './review';
+import { reviewIssues, retainedText } from './review';
 import { fields, sectionTitles, SOURCES } from './catalog';
 import { answerText, visible, type CaseRecord, type ClinicalSettings, defaultSettings } from './model';
 export type ExportSection = {
@@ -17,11 +17,11 @@ export type ExportModel = {
 };
 export function exportModel(r: CaseRecord, anonymous = true, sections: number[] = [0, 1, 2, 3, 4, 5, 6, 7], summary = ''): ExportModel {
     const all = fields(r.kind), review=reviewIssues(r);
-    const prohibited = all.filter(f => f.private).flatMap(f => { const a = r.answers[f.id]; return [...(a?.state === 'recorded' ? (Array.isArray(a.value) ? a.value : [a.value]) : []),...(r.sourceRaw?.[f.header]?[r.sourceRaw[f.header]]:[])]; }).flatMap(v => v.split(/[,;\n]/)).map(v => v.trim()).filter(v => v.length >= 2 && !['Unknown', 'None', 'Not recorded', 'Yes', 'No'].includes(v)).sort((a, b) => b.length - a.length);
+    const prohibited = all.filter(f => f.private).flatMap(f => { const a = r.answers[f.id]; return [...(a ? (Array.isArray(a.value) ? a.value : [a.value]) : []),...(r.sourceRaw?.[f.header]?[r.sourceRaw[f.header]]:[])]; }).flatMap(v => v.split(/[,;\n]/)).map(v => v.trim()).filter(v => v.length >= 2 && !['Unknown', 'None', 'Not recorded', 'Yes', 'No'].includes(v)).sort((a, b) => b.length - a.length);
     const scrub = (s: string) => { if (!anonymous)
         return s; let text = s.replace(/https?:\/\/\S+/gi, '[private link omitted]'); for (const word of prohibited)
         text = text.replace(new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), '[omitted]'); return text.replace(/\b(?:HN|patient\s*ID|national\s*ID)\s*[:#=]?\s*[A-Za-z0-9-]+/gi, '[identifier omitted]'); };
-    const result: ExportSection[] = sections.map(n => ({ title: sectionTitles[n], rows: all.filter(f => f.section === n && visible(f, r.answers) && (!anonymous || !f.private) && r.answers[f.id] && r.answers[f.id].state !== 'not_recorded').map(f => [f.label, scrub(answerText(r.answers[f.id])+(review.some(i=>i.field===f.id)?'\nNeeds review: '+review.find(i=>i.field===f.id)!.message+'\nOriginal: '+(r.sourceRaw?.[f.header]??answerText(r.answers[f.id])):''))] as [
+    const result: ExportSection[] = sections.map(n => ({ title: sectionTitles[n], rows: all.filter(f => f.section === n && visible(f, r.answers) && (!anonymous || !f.private) && r.answers[f.id] && (r.answers[f.id].state !== 'not_recorded'||!!retainedText(r.answers[f.id]).trim())).map(f => [f.label, scrub(answerText(r.answers[f.id])+(review.some(i=>i.field===f.id)?'\nNeeds review: '+review.find(i=>i.field===f.id)!.message+'\nOriginal: '+(r.sourceRaw?.[f.header]??answerText(r.answers[f.id])):''))] as [
             string,
             string
         ]) })).filter(s => s.rows.length);

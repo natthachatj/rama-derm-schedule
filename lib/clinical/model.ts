@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { conditionMet, malformed, chronology, reviewIssues } from './review';
+import { conditionMet, malformed, chronology, reviewIssues, retainedText } from './review';
 import { outcomesSchema } from './outcomes';
 import { fields, FORM_VERSION, type RegistryKind, type Field } from './catalog';
 export const answerStates = ['recorded', 'none', 'unknown', 'not_assessed', 'not_applicable', 'not_recorded'] as const;
@@ -52,9 +52,9 @@ export const emptyForm = (kind: RegistryKind): CaseForm => ({ kind, answers: {},
 export const answerText = (a?: Answer):string => {
  if(!a)return 'Not recorded';
  const value=a.state==='recorded'?(Array.isArray(a.value)?a.value.join(', '):a.value)+(a.upper?'–'+a.upper:'')+(a.unit?' '+a.unit:''):stateLabels[a.state];
- return value+(a.details?' · '+a.details:'');
+ return value+(retainedText(a)?' · Retained saved text: '+retainedText(a):'')+(a.details?' · '+a.details:'');
 };
-export function visible(f: Field, answers: Record<string, Answer>) {return !f.system&&(conditionMet(f,answers)||answers[f.id]?.state==='recorded' && (Array.isArray(answers[f.id].value)?answers[f.id].value.length>0:!!String(answers[f.id].value).trim()));}
+export function visible(f: Field, answers: Record<string, Answer>) {return !f.system&&(conditionMet(f,answers)||!!retainedText(answers[f.id]).trim()||answers[f.id]?.state==='recorded' && (Array.isArray(answers[f.id].value)?answers[f.id].value.length>0:!!String(answers[f.id].value).trim()));}
 export function validateForm(input: unknown, submit = false, extraChoices:Record<string,string[]> = {}) {
     const f = formSchema.parse(input), allowed = new Set(fields(f.kind).filter(x => !x.system).map(x => x.id));
     for (const k of Object.keys(f.answers))

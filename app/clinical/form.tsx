@@ -1,5 +1,5 @@
 import { QuantityInput, DateInput } from './quantity-field';
-import { reviewIssues, chronology, malformed } from '../../lib/clinical/review';
+import { reviewIssues, chronology, malformed, retainedText, storedText, meaningfulOriginal } from '../../lib/clinical/review';
 import EventEditor from './event-editor';
 import AttentionList, { jumpToField } from './attention';
 import { attention, caseAttention } from '../../lib/clinical/usability';
@@ -133,8 +133,10 @@ export function ClinicalField({ field: f, value, onChange, extraChoices, error, 
     const saved=Array.isArray(a.value)?a.value:String(a.value).split(', ').filter(Boolean);
     const options = [...new Set([...(f.options || []), ...extraChoices, ...(f.type==='multi'?saved:[])])];
     const problem=malformed(f,a);
-    const needsReview=!!problem||!!sequence||!!errorMessage&&!/information not recorded|provide an answer/.test(errorMessage);
-    const showInput = a.state === 'recorded' || a.state === 'not_recorded';
+    const hiddenOriginal=!a.corrected&&((a.state!=='recorded'&&(meaningfulOriginal(retainedText(a))||meaningfulOriginal(original||'')))||!storedText(a).trim()&&meaningfulOriginal(original||''));
+    const needsReview=hiddenOriginal||!!problem||!!sequence||!!errorMessage&&!/information not recorded|provide an answer/.test(errorMessage);
+    const isDoseUnit=f.id==='ravc_dissolution_unit';
+    const showInput = isDoseUnit || a.state === 'recorded' || a.state === 'not_recorded';
     const legacyState = !showInput && a.state !== 'not_applicable';
     const inputId = 'answer-' + f.id;
     function recordValue(value: Answer['value']) { onChange({ ...a, state: 'recorded', value }); }
@@ -145,25 +147,26 @@ export function ClinicalField({ field: f, value, onChange, extraChoices, error, 
     }
     return <div id={'field-' + f.id} ref={container} aria-invalid={error || undefined} aria-describedby={error ? inputId + '-error' : undefined} className={'clinical-field ' + (error ? needsReview?'needs-review':'invalid' : '')}>
         <label id={inputId + '-label'} htmlFor={inputId}>{error && <span className="clinical-dot" aria-label="Needs attention"/>}{f.label}{f.required && <span className="required"> *</span>}{f.private && <span className="tag">Private</span>}</label>
-        {(needsReview||original!==undefined)&&<details className="clinical-original-panel" open={needsReview}><summary>{needsReview?'● Needs review — original content preserved':'Original content / correction history'}</summary>{original!==undefined&&<><strong>Original source answer</strong><pre>{original||'No answer in the original source'}</pre></>}{a.state==='recorded'&&<><strong>Current saved / entered answer</strong><pre>{String(a.value)}</pre></>}{needsReview&&<p>{problem||sequence?.message||errorMessage}</p>}<p>Correct the structured answer below. Original source content is retained after saving.</p></details>}
+        {(needsReview||!!retainedText(a).trim()||original!==undefined)&&<details className="clinical-original-panel" open={needsReview||!!retainedText(a).trim()}><summary>{needsReview?'● Needs review — original content preserved':'Original content / correction history'}</summary>{original!==undefined&&<><strong>Original source answer</strong><pre>{original||'No answer in the original source'}</pre></>}{!!storedText(a)&&<><strong>{a.state==='recorded'?'Current saved / entered answer':'Retained saved text — status: '+stateLabels[a.state]}</strong><pre>{storedText(a)}</pre></>}{needsReview&&<p>{problem||sequence?.message||errorMessage||(hiddenOriginal?'Original text is retained behind the saved status. Review both manually.':'')}</p>}<p>Correct the structured answer below. Original source content is retained after saving.</p></details>}
         {f.help&&<p className="muted">{f.help}</p>}
-        <div className="clinical-answer-status" role="group" aria-label={'Information status: ' + f.label}>
+        {!isDoseUnit&&<div className="clinical-answer-status" role="group" aria-label={'Information status: ' + f.label}>
             <button type="button" aria-pressed={a.state === 'recorded'} onClick={startRecording}>Record</button>
             <button type="button" aria-pressed={a.state==='unknown'} onClick={()=>onChange({...a,state:'unknown'})}>Unknown</button>
-            {!['ravc_sex','nodule_D','ravc_D','nodule_C'].includes(f.id)&&<><button type="button" aria-pressed={a.state==='not_assessed'} onClick={()=>onChange({...a,state:'not_assessed'})}>Not assessed / measured</button><button type="button" aria-pressed={a.state==='none'} onClick={()=>onChange({...a,state:'none'})}>None / not performed</button></>}
+            {!['ravc_sex','nodule_D','ravc_D','nodule_C'].includes(f.id)&&<><button type="button" aria-pressed={a.state==='not_assessed'} onClick={()=>onChange({...a,state:'not_assessed'})}>{/dimension|depth|size/i.test(f.label)?'Not measured':'Not assessed'}</button><button type="button" aria-pressed={a.state==='none'} onClick={()=>onChange({...a,state:'none'})}>None / not performed</button></>}
             <button type="button" aria-pressed={a.state === 'not_applicable'} onClick={() => onChange({ ...a, state: 'not_applicable' })}>Not applicable</button>
-        </div>
+        </div>}
+        {isDoseUnit&&!['recorded','not_recorded'].includes(a.state)&&<small>Saved unit status: {stateLabels[a.state]}. Select a unit only for a recorded total.</small>}
         {legacyState && <small>Saved answer: {stateLabels[a.state]}. Choose Record or Not applicable to change it.</small>}
         {showInput && <>
 
-            {f.type === 'number' ? <QuantityInput field={f} answer={a} onChange={onChange}/> : (f.type==='date'||f.type==='datetime') ? <DateInput field={f} answer={a} onChange={onChange}/> : f.type === 'choice' ? <select data-answer-input id={inputId} value={String(a.value)} onChange={e => recordValue(e.target.value)}><option value="">Choose an answer</option>{options.map(o => <option key={o}>{o}</option>)}{typeof a.value === 'string' && a.value && !options.includes(a.value) && <option>{a.value}</option>}</select>
+            {f.type === 'number' ? <QuantityInput field={f} answer={a} onChange={onChange}/> : (f.type==='date'||f.type==='datetime') ? <DateInput field={f} answer={a} onChange={onChange}/> : f.type === 'choice' ? <select data-answer-input id={inputId} value={isDoseUnit&&a.state!=='recorded'?'':String(a.value)} onChange={e => recordValue(e.target.value)}><option value="">Choose an answer</option>{options.map(o => <option key={o}>{o}</option>)}{typeof a.value === 'string' && a.value && !options.includes(a.value) && <option>{a.value}</option>}</select>
                 : f.type === 'multi' ? <div className="clinical-choice-list" role="group" aria-labelledby={inputId + '-label'}>{options.map(o => <label className="clinical-check" key={o}><input data-answer-input type="checkbox" checked={Array.isArray(a.value) ? a.value.includes(o) : a.value.split(', ').includes(o)} onChange={e => { const list = Array.isArray(a.value) ? a.value : a.value ? a.value.split(', ') : []; recordValue(e.target.checked ? [...new Set([...list, o])] : list.filter(x => x !== o)); }}/>{o}</label>)}</div>
                     : f.type === 'long' ? <textarea data-answer-input id={inputId} rows={3} maxLength={6000} placeholder="Enter details" value={String(a.value)} onChange={e => recordValue(e.target.value)}/>
                         : <input data-answer-input id={inputId} type="text" maxLength={6000} placeholder="Enter answer" value={String(a.value)} onChange={e => recordValue(e.target.value)}/>
             }
         </>}
         {error && <span id={inputId + '-error'} className="clinical-field-error">{errorMessage || 'Enter an answer or choose Not applicable.'}</span>}
-        <label>Notes / Other details<textarea rows={2} maxLength={2000} value={a.details||''} placeholder="Explain Other, an unavailable treatment, an estimate, or a date exception" onChange={e=>onChange({...a,details:e.target.value})}/></label>
+        {!isDoseUnit&&<label>Notes / Other details<textarea rows={2} maxLength={2000} value={a.details||''} placeholder="Explain Other, an unavailable treatment, an estimate, or a date exception" onChange={e=>onChange({...a,details:e.target.value})}/></label>}
         {sequence&&<button type="button" className="button small" disabled={(a.details||'').trim().length<3} onClick={()=>onChange({...a,sequenceException:[...(a.sequenceException?.split('\n')||[]),sequence.signature].join('\n')})}>Confirm this date exception with my explanation</button>}
     </div>;
 }
