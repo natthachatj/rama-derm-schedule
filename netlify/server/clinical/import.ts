@@ -1,14 +1,16 @@
+import { doseIds } from '../../../lib/clinical/dose';
 import { createHash } from 'node:crypto';
 import { fields, SOURCES, column, type RegistryKind } from '../../../lib/clinical/catalog';
 import { newRecord, type Answer, type CaseRecord } from '../../../lib/clinical/model';
 import { SheetsRepository, registryIdHeader } from './storage';
 const fingerprint = (row: string[]) => createHash('sha256').update(JSON.stringify(row)).digest('hex');
 export async function importPreview(repo: SheetsRepository, kind: RegistryKind) { const headers = await repo.sourceHeaders(kind), end = column(headers.length - 1), rows = await repo.google.values(SOURCES[kind].sheetId, `'Form Responses 1'!A2:${end}`), idCol = headers.indexOf(registryIdHeader); const existing = new Set((await repo.list()).map(r => r.id)); const typed = rows.length ? await repo.google.request(`sheets/v4/spreadsheets/${SOURCES[kind].sheetId}?includeGridData=true&ranges=${encodeURIComponent(`'Form Responses 1'!A2:${end}${rows.length + 1}`)}&fields=sheets(data(startRow,rowData(values(effectiveValue,effectiveFormat(numberFormat(type))))))`) : null; const typedRows = typed?.sheets?.[0]?.data?.[0]?.rowData || []; return rows.flatMap((row: string[], i: number) => { if (!row.slice(0, idCol >= 0 ? idCol : headers.length).some(Boolean))
-    return []; const answers: Record<string, Answer> = {}, sourceRaw: Record<string, string> = {}; for (const f of fields(kind).filter(f => !f.extra)) {
+    return []; const answers: Record<string, Answer> = {}, sourceRaw: Record<string, string> = {}; for (const f of fields(kind).filter(f => !f.extra || doseIds.includes(f.id as any))) {
     const at = headers.indexOf(f.header), raw = at >= 0 ? String(row[at] || '') : '';
     sourceRaw[f.header] = raw;
     if (!f.system && raw) {
         answers[f.id] = { state: 'recorded', value: raw };
+        if(f.extra && ['unknown','not applicable','not recorded','not assessed','none'].includes(raw.trim().toLowerCase())) answers[f.id]={state:raw.trim().toLowerCase().replaceAll(' ','_') as Answer['state'],value:''};
         const cell = typedRows[i]?.values?.[at], format = cell?.effectiveFormat?.numberFormat?.type, serial = cell?.effectiveValue?.numberValue;
         if ((f.type === 'date' || f.type === 'datetime') && typeof serial === 'number' && ['DATE', 'DATE_TIME'].includes(format)) {
             const iso = new Date(Date.UTC(1899, 11, 30) + Math.round(serial * 86400000)).toISOString();

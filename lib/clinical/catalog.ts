@@ -1,7 +1,7 @@
 export type RegistryKind = 'ravc' | 'nodule';
 export const SOURCES = { ravc: { title: 'RAVC complication case', sheetId: '1T9eHLdm84bHKy3uoRY5dsXLEGc_izKhaN3HhtcVd2XI', tab: 'Form Responses 1' }, nodule: { title: 'Injectable-related nodule', sheetId: '13xdpgSqdTvoBkxuYJwYVoMLZRbXXB1KR9sh7SRYNck0', tab: 'Form Responses 1' } } as const;
 export const DRIVE_PARENT = '1fUqfMTRLxfcl_mSKeiLozlNDG1QYWo5P';
-export const FORM_VERSION = 2;
+export const FORM_VERSION = 3;
 export const sectionTitles = ['Patient & referral', 'Injection & history', 'Symptoms & examination', 'Ultrasound', 'Pathology & microbiology', 'Management', 'Follow-up & outcome', 'Other investigations'];
 export type Field = {
     id: string;
@@ -37,7 +37,7 @@ const yesNo = ['Yes', 'No'];
 for (const key of ['V', 'X', 'Y', 'Z', 'BK', 'CC', 'CF', 'CZ', 'BP', 'BQ', 'BR', 'BS', 'BT', 'BU'])
     choices['nodule_' + key] = yesNo;
 const multi = new Set(['ravc_U', 'ravc_V', 'ravc_W', 'ravc_AB', 'ravc_AC', 'nodule_Q', 'nodule_R', 'nodule_U', 'nodule_AF', 'nodule_AU', 'nodule_CM', 'nodule_CO']);
-const numbers = new Set(['ravc_D', 'ravc_AD', 'ravc_AE', 'ravc_AF', 'ravc_AG', 'nodule_C', 'nodule_L', 'nodule_O', 'nodule_AC', 'nodule_AG', 'nodule_AK', 'nodule_AL', 'nodule_AV', 'nodule_AX', 'nodule_BF', 'nodule_CN', 'nodule_CP', 'nodule_CS']);
+const numbers = new Set(['ravc_D', 'ravc_AE', 'ravc_AF', 'ravc_AG', 'nodule_C', 'nodule_L', 'nodule_O', 'nodule_AC', 'nodule_AG', 'nodule_AK', 'nodule_AL', 'nodule_AV', 'nodule_AX', 'nodule_BF', 'nodule_CN', 'nodule_CP', 'nodule_CS']);
 const dateFields = new Set(['ravc_R', 'nodule_J', 'nodule_K', 'nodule_AB', 'nodule_CK', 'nodule_DA']);
 const privateFields = new Set(['ravc_B', 'ravc_C', 'ravc_F', 'ravc_G', 'ravc_H', 'ravc_I', 'ravc_J', 'ravc_L', 'ravc_AJ', 'nodule_B', 'nodule_F', 'nodule_G', 'nodule_N', 'nodule_BN']);
 function section(kind: RegistryKind, i: number) { if (kind === 'ravc')
@@ -62,8 +62,9 @@ export function fields(kind: RegistryKind): Field[] {
         const optional = (kind === 'ravc' && [4, 9, 35].includes(i)) || (kind === 'nodule' && [4, 26, 65, 86, 107, 108].includes(i));
         return { id, header, label: kind === 'ravc' ? ({ B: 'HN', C: 'Patient name', D: 'Age (years)', E: 'Underlying conditions', F: 'Referral source category', G: 'Referring clinic / hospital', H: 'Referring clinician category', I: 'Referring clinician name', J: 'Referring clinician phone', K: 'Material type', L: 'Product brand', M: 'Injection site, technique, depth and amount', N: 'Initial management', O: 'Injection date/time (ICT)', P: 'Symptom onset date/time (ICT)', Q: 'First RAVC visit date/time (ICT)', R: 'Last follow-up date', S: 'Responsible fellow', T: 'Attending clinician' } as Record<string, string>)[column(i)] || header : header.trim(), section: section(kind, i), type: numbers.has(id) ? 'number' : dateFields.has(id) ? 'date' : kind === 'ravc' && i >= 14 && i <= 16 ? 'datetime' : choices[id] ? multi.has(id) ? 'multi' : 'choice' : /Details|Findings|Summary|History|Management|Treatment|evaluation|Technique\/|H\/O|Medications/i.test(header) ? 'long' : 'text', options: choices[id], required: !system && !optional, private: privateFields.has(id), system, condition, min: numbers.has(id) ? 0 : undefined, max: ['ravc_D', 'nodule_C'].includes(id) ? 120 : id === 'nodule_AG' ? 10 : id === 'nodule_BF' ? 3 : undefined };
     });
+    if (kind === 'ravc') { const description = base.find(f=>f.id==='ravc_AD')!; description.type='long'; description.required=false; description.label='Dissolution dose / treatment description (original text)'; }
     if (kind === 'ravc')
-        base.push({ id: 'ravc_dissolution_unit', header: 'Dissolution amount unit', label: 'Dissolution amount unit', section: 5, type: 'choice', options: ['units', 'mg', 'mL', 'Multiple agents: see treatment events', 'Other'], required: true, extra: true, condition: { field: 'ravc_AD', values: ['*'] } }, { id: 'ravc_complication_type', header: 'Complication type', label: 'Complication type', section: 2, type: 'choice', options: ['Vascular complication', 'Nodule', 'Inflammatory reaction', 'Other'], required: true, extra: true });
+        base.push({ id:'ravc_dissolution_total', header:'Structured dissolution total dose', label:'Structured total dose', section:5, type:'number', min:0, required:false, extra:true }, { id: 'ravc_dissolution_unit', header: 'Structured dissolution dose unit', label: 'Dose unit', section: 5, type: 'choice', options: ['IU', 'units', 'mg', 'mL', 'vials', 'Multiple agents: see treatment events', 'Other'], required: true, extra: true, condition: { field: 'ravc_dissolution_total', values: ['*'] } }, { id: 'ravc_complication_type', header: 'Complication type', label: 'Complication type', section: 2, type: 'choice', options: ['Vascular complication', 'Nodule', 'Inflammatory reaction', 'Other'], required: true, extra: true });
     if (kind === 'nodule') {
         base.find(f => f.id === 'nodule_CS')!.condition = { field: 'nodule_hyal', values: ['Yes'] };
         base.push({ id: 'nodule_hyal', header: 'Hyaluronidase used', label: 'Hyaluronidase used?', section: 5, type: 'choice', options: yesNo, required: true, extra: true }, { id: 'nodule_hyal_sessions', header: 'Hyaluronidase sessions', label: 'Hyaluronidase sessions', section: 5, type: 'number', min: 0, required: true, extra: true, condition: { field: 'nodule_hyal', values: ['Yes'] } }, { id: 'nodule_hyal_technique', header: 'Hyaluronidase technique', label: 'Hyaluronidase technique', section: 5, type: 'text', required: true, extra: true, condition: { field: 'nodule_hyal', values: ['Yes'] } });

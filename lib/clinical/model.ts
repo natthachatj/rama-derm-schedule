@@ -5,7 +5,7 @@ export const answerStates = ['recorded', 'none', 'unknown', 'not_assessed', 'not
 export const stateLabels: Record<string, string> = { recorded: 'Recorded', none: 'None', unknown: 'Unknown', not_assessed: 'Not assessed', not_applicable: 'Not applicable', not_recorded: 'Not recorded' };
 export const answerSchema = z.object({ state: z.enum(answerStates), value: z.union([z.string().max(6000), z.array(z.string().max(300)).max(30)]).default(''), precision: z.enum(['day', 'minute']).optional() });
 export type Answer = z.infer<typeof answerSchema>;
-export const eventSchema = z.object({ id: z.string().uuid(), type: z.enum(['Injection', 'History', 'Investigation', 'Treatment', 'Follow-up']), date: z.string().max(10), datePrecision: z.enum(['day', 'month', 'year', 'unknown']), title: z.string().trim().min(1).max(160), details: z.string().max(6000), amount: z.string().max(100).optional(), unit: z.string().max(40).optional(), response: z.string().max(2000).optional() });
+export const eventSchema = z.object({ id: z.string().uuid(), type: z.enum(['Injection', 'History', 'Investigation', 'Treatment', 'Follow-up']), date: z.string().max(10), datePrecision: z.enum(['day', 'month', 'year', 'unknown']), title: z.string().trim().min(1).max(160), details: z.string().max(6000), amount: z.string().max(100).optional(), unit: z.string().max(40).optional(), response: z.string().max(2000).optional(), agent:z.string().max(120).optional(), route:z.string().max(120).optional() });
 export type CaseEvent = z.infer<typeof eventSchema>;
 export const formSchema = z.object({ kind: z.enum(['ravc', 'nodule']), answers: z.record(answerSchema), events: z.array(eventSchema).max(150), outcomes: outcomesSchema.optional() });
 export type CaseForm = z.infer<typeof formSchema>;
@@ -79,6 +79,13 @@ export function validateForm(input: unknown, submit = false) {
             if (!pattern.test(text) || !validDay(text.slice(0, 10)))
                 errors.push({ field: field.id, message: `${field.label}: choose a valid date.` });
         }
+    }
+    if (f.kind === 'ravc') {
+        const total=f.answers.ravc_dissolution_total,unit=f.answers.ravc_dissolution_unit;
+        if (total?.state==='recorded' && String(total.value).trim() && (!unit || unit.state!=='recorded' || !String(unit.value).trim() || ['Other','Multiple agents: see treatment events'].includes(String(unit.value)))) errors.push({field:'ravc_dissolution_unit',message:'Dose unit: choose a unit for the recorded numerical total.'});
+        const agents=f.answers.ravc_AC;
+        if(submit && agents?.state==='recorded' && (Array.isArray(agents.value)?agents.value:[agents.value]).some(v=>v.trim()&&!/^(none|no|not applicable|-)$/i.test(v.trim())) && !(total && ['recorded','unknown'].includes(total.state)) && !(f.answers.ravc_AD?.state==='recorded' && String(f.answers.ravc_AD.value).trim()) && !f.events.some(e=>e.type==='Treatment'&&e.agent&&e.amount&&e.unit)) errors.push({field:'ravc_dissolution_total',message:'Dissolution dose: record a total with its unit, provide a dose description/treatment entry, or choose Dose unknown.'});
+        if(total?.state==='recorded' && Array.isArray(agents?.value) && agents!.state==='recorded' && agents!.value.length>1) errors.push({field:'ravc_dissolution_total',message:'Several dissolution agents are selected. Record separate doses in treatment events; do not combine them into one total.'});
     }
     for (const e of f.events) {
         if (e.datePrecision === 'unknown') {

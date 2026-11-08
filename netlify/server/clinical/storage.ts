@@ -1,3 +1,4 @@
+import { doseIds, doseHeaders } from '../../../lib/clinical/dose';
 import { getStore } from '@netlify/blobs';
 import { GoogleClient } from './google';
 import { SOURCES, column, fields, type RegistryKind } from '../../../lib/clinical/catalog';
@@ -94,11 +95,10 @@ export class SheetsRepository implements ClinicalRepository {
         throw Error('Duplicate source ID. Resolve this in the spreadsheet before retrying.'); if (!matches.length) {
         const values = Array(headers.length).fill('');
         for (const field of fields(kind)) {
-            if (field.system || field.extra)
+            if (field.system || field.extra && !doseIds.includes(field.id as any))
                 continue;
             const at = headers.indexOf(field.header);
-            if (at < 0)
-                throw Error('Source headers changed. Review field mappings before retrying.');
+            if (at < 0) { if(doseIds.includes(field.id as any) && !r.answers.ravc_dissolution_total) continue; throw Error('Source headers changed or structured dose columns are missing. Review spreadsheet setup before retrying.'); }
             const a = r.answers[field.id];
             values[at] = !a ? 'Not recorded' : a.state === 'recorded' ? Array.isArray(a.value) ? a.value.join(', ') : a.value : a.state.replaceAll('_', ' ');
         }
@@ -109,11 +109,10 @@ export class SheetsRepository implements ClinicalRepository {
         await this.google.append(id, `${quote(SOURCES[kind].tab)}!A:${column(headers.length - 1)}`, [values]);
         return;
     } const rowNumber = matches[0]; const writes: any[] = []; for (const field of fields(kind)) {
-        if (field.system || field.extra)
+        if (field.system || field.extra && !doseIds.includes(field.id as any))
             continue;
         const at = headers.findIndex(h => h === field.header);
-        if (at < 0)
-            throw Error('Source headers changed. Review field mappings before retrying.');
+        if (at < 0) { if(doseIds.includes(field.id as any) && !r.answers.ravc_dissolution_total) continue; throw Error('Source headers changed or structured dose columns are missing. Review spreadsheet setup before retrying.'); }
         const a = r.answers[field.id];
         writes.push({ range: `${quote(SOURCES[kind].tab)}!${column(at)}${rowNumber}`, values: [[!a ? 'Not recorded' : a.state === 'recorded' ? Array.isArray(a.value) ? a.value.join(', ') : a.value : a.state.replaceAll('_', ' ')]] });
     } writes.push({ range: `${quote(SOURCES[kind].tab)}!${column(idColumn)}${rowNumber}`, values: [[r.id]] }); if (!r.historical) {
@@ -142,6 +141,12 @@ export class SheetsRepository implements ClinicalRepository {
             if (headers.length >= source.properties.gridProperties.columnCount)
                 await this.google.request(`sheets/v4/spreadsheets/${id}:batchUpdate`, 'POST', { requests: [{ appendDimension: { sheetId: source.properties.sheetId, dimension: 'COLUMNS', length: 1 } }] });
             await this.google.update(id, `${quote(SOURCES[item.kind as RegistryKind].tab)}!${column(headers.length)}1`, [[registryIdHeader]]);
+        }
+        if(item.kind==='ravc') {
+            const headers=await this.sourceHeaders('ravc'), missing=doseHeaders.filter(h=>!headers.includes(h));
+            if(missing.length){const meta=await this.google.request(`sheets/v4/spreadsheets/${id}?fields=sheets(properties)`),source=meta.sheets.find((s:any)=>s.properties.title===SOURCES.ravc.tab),needed=headers.length+missing.length-source.properties.gridProperties.columnCount;
+            if(needed>0)await this.google.request(`sheets/v4/spreadsheets/${id}:batchUpdate`,'POST',{requests:[{appendDimension:{sheetId:source.properties.sheetId,dimension:'COLUMNS',length:needed}}]});
+            await this.google.update(id,`${quote(SOURCES.ravc.tab)}!${column(headers.length)}1:${column(headers.length+missing.length-1)}1`,[missing]);}
         }
     } return this.inspect(); }
 }

@@ -243,3 +243,37 @@ Only chart names are persisted as browser preferences; clinical values and filte
 Validation adds fictional tests for trash ownership, restoration, stale revisions, submission boundaries,
 missing/conditional/structured field guidance, private filter payloads, OR/AND matching, categorical values,
 chart denominators, linked conflicts, endpoint eligibility and stable colors. No live patient data is used.
+
+### Dose correction (form version 3)
+
+RAVC's original `Total amount of dissolution agent used` column remains unchanged in position and
+accepts the full original multiline treatment description. It is no longer validated as a number.
+Separate optional structured total and unit fields synchronize to appended response columns
+`Structured dissolution total dose` and `Structured dissolution dose unit`. Existing columns,
+automation fields and Registry Record IDs are not moved. Setup appends only missing extension
+headers; sync fails before writing if entered structured values have no destination columns.
+Import recognizes the extension columns and preserves explicit unknown states. A numerical dose
+requires a concrete unit; multiple selected agents require separate treatment entries. Unknown
+is explicit, never zero. The submission dose group places agent, total, unit and original description
+together. Known-dose totals are manual declarations, never inferred from prose, vial counts or
+concentrations. Numeric legacy corrections are not multiplied or converted.
+
+Dated treatment events optionally include agent and route/technique, with paired amount/unit inputs.
+Event totals group by matching agent and literal unit only, exclude incomplete entries, and do not
+add themselves to the case total. They do not convert IU, units, vials, mg or mL. Event agent/route
+remain in the existing Registry Records JSON and are included in information-only exports.
+
+Historical recovery is restricted to submitted historical RAVC records whose active Not applicable
+answer still contains exactly the original meaningful dose description. No totals are extracted.
+The recovery retains all other values, sourceRaw, links and outcomes, increments revision, retains
+pre/post recovery audit snapshots and marks document processing pending. Source description cells
+are restored only after matching permanent IDs and checking current values. Existing independent
+numeric corrections and deliberately different answers are not overwritten. No PDF regeneration,
+Drive-folder creation, AutoCrat change or deployment is part of this correction.
+
+On 8 November 2026 the owner authorized the live dose correction. Readback verified restoration of
+20 exact-match historical registry descriptions and 19 overwritten response description cells;
+one response description already matched. Two extension headers were appended at AP:AQ, preserving
+AO Registry Record ID and all original column positions. Forty pre/post audit snapshots were retained
+in Registry Revisions. No numeric totals were guessed or backfilled and no clinical record data was
+copied into this repository. Recovered records await explicit PDF processing after app deployment.

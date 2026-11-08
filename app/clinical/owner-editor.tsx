@@ -7,7 +7,7 @@ import { fields, SOURCES } from '../../lib/clinical/catalog';
 import { answerText, visible, type Answer, type CaseRecord } from '../../lib/clinical/model';
 import { editChanges, editSectionTitle, type EditConflict, type EditSection } from '../../lib/clinical/edit';
 import { emptyOutcomes } from '../../lib/clinical/outcomes';
-import { ClinicalField } from './form';
+import { ClinicalFields } from './form';
 import EventEditor from './event-editor';
 import OutcomeEditor from './outcome-editor';
 import { clinicalApi } from './api';
@@ -49,7 +49,7 @@ export default function OwnerEditor({ initial, section: initialSection, focusFie
         <AttentionList form={draft} owner extraChoices={extraChoices} canJump={i=>!dirty || i.section===section} onJump={i=>{setSection(i.section);jumpToField(i.field);}}/>
         {conflict && <section className="clinical-conflicts" aria-label="Resolve changed information"><h3>Choose the values to save</h3><p>Other saved information will be preserved. If the case changes again, we will check again before saving.</p>{conflict.items.map(item => <fieldset key={item.key} disabled={saving}><legend>{item.label}</legend><label className="clinical-conflict-choice"><input type="radio" name={'resolve-' + item.key} checked={resolutions[item.key] === 'mine'} onChange={() => setResolutions({ ...resolutions, [item.key]: 'mine' })}/><span><strong>Use my value</strong><pre>{displayValue(item.mine)}</pre></span></label><label className="clinical-conflict-choice"><input type="radio" name={'resolve-' + item.key} checked={resolutions[item.key] === 'latest'} onChange={() => setResolutions({ ...resolutions, [item.key]: 'latest' })}/><span><strong>Keep latest saved value</strong><pre>{displayValue(item.latest)}</pre></span></label></fieldset>)}</section>}
         <fieldset className="clinical-owner-fields" disabled={saving}>
-        {/^[0-7]$/.test(section) && <div className="clinical-fields">{fields(initial.kind).filter(f => f.section === Number(section) && visible(f, draft.answers)).map(f => <ClinicalField key={f.id} field={f} value={draft.answers[f.id]} extraChoices={extraChoices[f.id] || []} error={needs.some(e => e.field === f.id)} errorMessage={needs.find(e => e.field === f.id)?.message} onChange={value => update({ ...draft, answers: { ...draft.answers, [f.id]: value } })}/>)}</div>}
+        {/^[0-7]$/.test(section) && <div className="clinical-fields"><ClinicalFields form={draft} section={Number(section)} extraChoices={extraChoices} issues={needs} onChange={(id,value)=>update({...draft,answers:{...draft.answers,[id]:value}})}/></div>}
         {section === 'events' && <div id="field-events"><EventEditor events={draft.events} onChange={events => update({ ...draft, events })}/></div>}
         {(section === 'outcomes' || section === 'followup') && <div id="field-outcomes"><OutcomeEditor value={draft.outcomes} onlyFollowup={section === 'followup' ? newVisitId : undefined} onChange={outcomes => update({ ...draft, outcomes })}/></div>}
         {section === 'followup' && <p className="muted">For healing-time analysis, record the actual healing date in Outcome & follow-up when known; an examination showing a healed wound is not automatically its exact healing date.</p>}
