@@ -1,4 +1,4 @@
-import {normalizeLeaveDays,leaveTypeSchema,allowanceSchema,requiredCoverage,assertNoLeaveOverlap,leaveBalance,quotaDays} from './leave-accounting';
+import {normalizeLeaveDays,leaveTypeSchema,electiveLocationSchema,allowanceSchema,requiredCoverage,assertNoLeaveOverlap,leaveBalance,quotaDays} from './leave-accounting';
 import {resizeCohort,activeFellows} from './cohort';
 import {mutatePresentation} from './presentation-api';
 import {presentationPrivateView} from './presentations';
@@ -30,10 +30,14 @@ else if(action==='publish'){assert(y,'Year not found.');assert(!state.leaves.som
 else if(action==='leave'){
  assert(y?.published,'This year has no published schedule.');const member=id.memberships.find(m=>m.year===y.year);const requester=id.admin?body.requester:member?.id;assert(requester&&y.fellows.some(f=>f.id===requester&&!f.retired),'Active fellow access required.');
  const modern=body.days!==undefined;const days=modern?normalizeLeaveDays(body.days,y.year):undefined;const type=modern?leaveTypeSchema.parse(body.type):undefined;
+ assert(modern || body.type !== 'Elective leave', 'Choose dates for elective leave.');
+ const electiveLocation = type === 'Elective leave'
+   ? electiveLocationSchema.parse(body.electiveLocation ?? '')
+   : undefined;
  assert(Array.isArray(body.items)&&body.items.length<=(modern?3000:100)&&(modern||body.items.length>0),'Add valid coverage sessions.');
  if(days){assertNoLeaveOverlap(state,y,requester,days);const expected=requiredCoverage(y,requester,days);assert(expected.length===body.items.length&&expected.every(row=>body.items.some((i:any)=>i.date===row.date&&i.slot===row.slot)),'Coverage must include every clinic in the selected leave periods and only the selected RAVC duties. Refresh and review the coverage list.');}
  const keys=new Set();for(const item of body.items){assert(typeof item.date==='string'&&item.date>=`${y.year}-07-01`&&item.date<=`${y.year+1}-06-30`,'Choose coverage dates within this academic year.');const s=y.published.slots.find(s=>s.id===item.slot);assert(s&&assignment(y,y.published,item.date,s)?.fellow===requester,'Requester must hold each selected assignment.');assert(item.replacement!==requester&&y.fellows.some(f=>f.id===item.replacement&&!f.retired),'Choose another active fellow for coverage.');const key=item.date+'|'+item.slot;assert(!keys.has(key),'Duplicate request session.');keys.add(key);assert(!state.leaves.some(l=>l.year===y.year&&l.status==='pending'&&l.items.some(i=>i.date===item.date&&i.slot===item.slot)),'A request already exists for this session.');}
- state.leaves.push({id:crypto.randomUUID(),year:y.year,requester,reason:String(body.reason||'').slice(0,2000),...(days?{days,type}:{}),items:body.items.map(({date,slot,replacement}:any)=>({date,slot,replacement})),status:'pending',created:new Date().toISOString()});
+ state.leaves.push({id:crypto.randomUUID(),year:y.year,requester,reason:String(body.reason||'').slice(0,2000),...(days?{days,type}:{}),...(electiveLocation?{electiveLocation}:{}),items:body.items.map(({date,slot,replacement}:any)=>({date,slot,replacement})),status:'pending',created:new Date().toISOString()});
 }
 else if(action==='decide'){const l=state.leaves.find(l=>l.id===body.id);assert(l&&l.status==='pending','Request already decided.');const yr=state.years.find(y=>y.year===l.year)!;assert(['approved','rejected'].includes(body.status),'Invalid decision.');if(body.status==='approved'){
  if(l.days){assertNoLeaveOverlap(state,yr,l.requester,l.days,l.id);const expected=requiredCoverage(yr,l.requester,l.days);assert(expected.length===l.items.length&&expected.every(row=>l.items.some(i=>i.date===row.date&&i.slot===row.slot)),'Assignments changed since this request. Reject and resubmit with the updated coverage list.');}
