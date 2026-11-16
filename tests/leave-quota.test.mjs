@@ -29,3 +29,45 @@ test('fresh approved balance is checked on each approval and stale mutations can
 test('changed assignments are detected on approval and inactive replacements are rejected',async()=>{const f=fixture(),body=f.body([day('2026-07-01')]);f.edit(s=>s.years[0].fellows[1].retired=true);assert.equal((await f.post(body)).status,400);f.edit(s=>s.years[0].fellows[1].retired=false);await f.post(body);f.edit(s=>s.years[0].published.overrides['2026-07-01|test-am']={fellow:'f3'});assert.equal((await f.post({action:'decide',id:f.state.leaves[0].id,status:'approved'})).status,400);});
 test('balances are private to admin and the fellow, and allowance validation is protected',async()=>{const f=fixture();f.edit(s=>s.years[0].fellows[0].leaveAllowance=8.5);let view=await(await f.api.GET()).json();assert.equal(view.leaveBalances.length,5);const changed=structuredClone(f.state.years[0].fellows);changed[0].leaveAllowance=.25;assert.equal((await f.post({action:'fellows',fellows:changed})).status,400);changed[0].leaveAllowance=9.5;assert.equal((await f.post({action:'fellows',fellows:changed})).status,200);f.user({userId:'fellow',email:'none',displayName:'Fellow',fullName:null,localAccess:{admin:false,memberships:[{year:2026,id:'f2'}]}});view=await(await f.api.GET()).json();assert.equal(view.leaveBalances.length,1);assert.equal(view.leaveBalances[0].fellow,'f2');assert.equal(view.years[0].fellows[0].leaveAllowance,undefined);assert.equal((await f.post({action:'fellows',fellows:changed})).status,400);f.user(null);view=await(await f.api.GET()).json();assert.equal(view.leaveBalances.length,0);assert.equal(view.leaves.length,0);});
 test('a new academic year resets the cohort allowance and keeps previous year balances',async()=>{const f=fixture();f.edit(s=>s.years[0].fellows[0].leaveAllowance=7);assert.equal((await f.post({action:'year',year:2027,count:3})).status,200);const next=f.state.years.find(y=>y.year===2027);assert.equal(leaveBalance(f.state,next,next.fellows[0].id).allowance,10);assert.equal(leaveBalance(f.state,f.state.years[0],'f1').allowance,7);});
+
+test('elective leave keeps its location and individual covers without charging the annual allowance', async () => {
+ const f = fixture();
+ f.edit(state => { state.years[0].fellows[0].leaveAllowance = 0; });
+ f.user({userId:'fellow',email:'fellow@example.org',displayName:'Fellow',fullName:null,
+  localAccess:{admin:false,memberships:[{year:2026,id:'f1'}]}});
+ const days = Array.from({length:21}, (_, index) => day('2026-07-' + String(index + 1).padStart(2, '0')));
+ const request = f.body(days, 'Elective leave');
+ assert.ok(request.items.length > 2);
+ request.items[1].replacement = 'f3';
+ assert.match((await f.post({...request,electiveLocation:'  '})).body.error, /elective location/i);
+ assert.equal((await f.post({...request,electiveLocation:'Example Hospital',items:request.items.slice(1)})).status, 400);
+ assert.equal((await f.post({...request,electiveLocation:'  Example Hospital  '})).status, 200);
+ const leave = f.state.leaves[0];
+ assert.equal(leave.electiveLocation, 'Example Hospital');
+ assert.equal(leave.days.length, 21);
+ assert.equal(leaveBalance(f.state,f.state.years[0],'f1').pending, 0);
+ f.user({userId:'admin',email:'admin@example.org',displayName:'Admin',fullName:null});
+ const response = await f.post({action:'decide',id:leave.id,status:'approved'});
+ assert.equal(response.status, 200, response.body.error);
+ const saved = f.state.leaves[0];
+ assert.equal(saved.chargedDays, 0);
+ assert.equal(saved.quotaOverride, undefined);
+ const balance = leaveBalance(f.state,f.state.years[0],'f1');
+ assert.equal(balance.used, 0);
+ assert.equal(balance.byType.find(t=>t.type==='Elective leave').days, 15);
+ const year = f.state.years[0];
+ for (const item of saved.items.slice(0,2)) {
+  const slot = year.published.slots.find(s=>s.id===item.slot);
+  assert.equal(assignment(year,year.published,item.date,slot).fellow,item.replacement);
+  assert.ok(f.state.notices.some(n=>n.fellow===item.replacement&&n.text.includes(item.date)));
+ }
+ assert.equal(validateBackup({schemaVersion:1,state:f.state,revision:f.revision,exportedAt:'now'}).state.leaves[0].electiveLocation,'Example Hospital');
+});
+
+test('elective leave can be requested for a date with no clinic assignment', async () => {
+ const f = fixture();
+ const request = f.body([day('2026-07-02')], 'Elective leave');
+ assert.equal(request.items.length, 0);
+ assert.equal((await f.post({...request,electiveLocation:'Example Hospital'})).status, 200);
+ assert.equal((await f.post({action:'decide',id:f.state.leaves[0].id,status:'approved'})).status, 200);
+});
