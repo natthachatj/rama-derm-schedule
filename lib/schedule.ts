@@ -9,7 +9,7 @@ export type Plan={rotations:Rotation[];slots:Slot[];overrides:Record<string,Assi
 export type Year={year:number;fellows:Fellow[];draft:Plan;published:Plan|null;publishedAt:string|null;dirty:boolean;activityHolidays?:string[];activityHolidaysReviewed?:boolean};
 export type Leave={id:string;year:number;requester:string;reason:string;type?:LeaveType;days?:LeaveDay[];chargedDays?:number;quotaOverride?:{by:string;reason:string;at:string};items:{date:string;slot:string;replacement:string;before?:{published:Assignment|null;draft:Assignment|null;effective:Assignment;draftEffective?:Assignment|null}}[];status:string;created:string;decided?:string;cancelledAt?:string};
 export type Notice={id:string;fellow:string;year:number;text:string;read:boolean;created:string};
-export type Workspace={presentations?:Presentation[];presentationTargets?:PresentationTargets[];activities?:Activity[];activityTemplates?:ActivityTemplate[];activityStaff?:ActivityStaff[];years:Year[];leaves:Leave[];notices:Notice[];audit:{at:string;action:string}[]};
+export type Workspace={appearance?:Record<string,'light'|'dark'|'system'>;presentations?:Presentation[];presentationTargets?:PresentationTargets[];activities?:Activity[];activityTemplates?:ActivityTemplate[];activityStaff?:ActivityStaff[];years:Year[];leaves:Leave[];notices:Notice[];audit:{at:string;action:string}[]};
 export const colors=['#3766d8','#159f9b','#9255c9','#db8d38','#d05e83'];
 export function iso(d:Date){return d.toISOString().slice(0,10)}
 export function add(date:string,n:number){const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return iso(d)}

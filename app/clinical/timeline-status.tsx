@@ -1,0 +1,4 @@
+import type {CaseForm} from '../../lib/clinical/model';
+export default function TimelineStatus({value,onChange}:{value:CaseForm['timelineStatus'];onChange:(v:NonNullable<CaseForm['timelineStatus']>)=>void}) {
+ return <fieldset className="clinical-timeline-status"><legend>Management information</legend><p>Add a treatment entry with what was done. If no treatment was performed, select that explicitly.</p><div className="clinical-answer-status"><button type="button" aria-pressed={value==='recorded'} onClick={()=>onChange('recorded')}>Record management</button><button type="button" aria-pressed={value==='none'} onClick={()=>onChange('none')}>No treatment performed</button></div>{value==='none'&&<p>No treatment performed. Existing timeline entries remain available for review.</p>}</fieldset>;
+}

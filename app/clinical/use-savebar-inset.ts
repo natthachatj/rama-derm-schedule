@@ -1,0 +1,7 @@
+import { useEffect, useState } from 'react';
+// Keep actions above the software keyboard and optional hosting branding.
+export function useSavebarInset() {
+ const [inset,setInset]=useState(0);
+ useEffect(()=>{let frame=0;const measure=()=>{const v=window.visualViewport,keyboard=v&&v.scale===1?Math.max(0,window.innerHeight-v.height-v.offsetTop):0;let branding=0;document.querySelectorAll<HTMLAnchorElement>('a[href*="netlify"]').forEach(a=>{if(!/powered\s+by\s+netlify/i.test(a.textContent||a.getAttribute('aria-label')||''))return;const r=a.getBoundingClientRect();if(r.width>80&&r.width<500&&r.height>10&&r.height<120&&r.top>window.innerHeight-180&&r.bottom<=window.innerHeight+1)branding=Math.max(branding,window.innerHeight-r.top+8);});setInset(Math.ceil(keyboard||branding));};const schedule=()=>{cancelAnimationFrame(frame);frame=requestAnimationFrame(measure);};schedule();window.addEventListener('resize',schedule);window.visualViewport?.addEventListener('resize',schedule);window.visualViewport?.addEventListener('scroll',schedule);const observer=new MutationObserver(schedule);observer.observe(document.body,{childList:true,subtree:true});return()=>{cancelAnimationFrame(frame);observer.disconnect();window.removeEventListener('resize',schedule);window.visualViewport?.removeEventListener('resize',schedule);window.visualViewport?.removeEventListener('scroll',schedule);};},[]);
+ return inset;
+}

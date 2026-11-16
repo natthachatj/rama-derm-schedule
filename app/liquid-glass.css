@@ -1,0 +1,213 @@
+/* Keep the strongest glass treatment on navigation and the rotation cards. */
+.liquid-glass {
+  --glass-edge: #fff;
+  --glass-header-solid: #edf5ff;
+  --glass-header: linear-gradient(115deg, #f6faffed, #e1eefce6 65%, #d6f5f1e6);
+  --glass-card: linear-gradient(135deg, #ffffffef, #e9f3fdf5);
+  --glass-card-border: #d3e3f5;
+  --glass-shadow: #1c49731a;
+  --glass-drawer-solid: #142d4b;
+  --glass-drawer: radial-gradient(ellipse at 100% 96%, #1e7e8cc2, transparent 48%),
+    linear-gradient(150deg, #244e73f7, #0f2844f5 48%, #153a55ed);
+  --glass-active: linear-gradient(145deg, #f0faff, #c9eaf8);
+  --glass-scrim: #1636553d;
+  --glass-muted: #455b76;
+  min-height: 100vh;
+  background: radial-gradient(ellipse at 96% 9%, #d8f5f0 0, transparent 42rem),
+    radial-gradient(ellipse at 22% 0%, #dceaff 0, transparent 50rem),
+    var(--bg);
+}
+
+:root[data-theme="dark"] .liquid-glass {
+  --glass-edge: #91b8d452;
+  --glass-header-solid: #192c42;
+  --glass-header: linear-gradient(115deg, #1b2b40f7, #15273bef 70%, #143e4ded);
+  --glass-card: linear-gradient(140deg, #24364bea, #182639f5);
+  --glass-card-border: #738ba44f;
+  --glass-shadow: #060d1947;
+  --glass-drawer-solid: #142437;
+  --glass-drawer: radial-gradient(ellipse at 100% 96%, #166572b8, transparent 45%),
+    linear-gradient(150deg, #233e58f7, #101e2ff5 50%, #142c3bed);
+  --glass-active: linear-gradient(145deg, #d1effc, #9ccbe5);
+  --glass-scrim: #050d19a8;
+  --glass-muted: #b8c9dd;
+  background: radial-gradient(ellipse at 98% 8%, #153845 0, transparent 38rem),
+    radial-gradient(ellipse at 16% 0%, #17283e 0, transparent 45rem),
+    #0d1828;
+}
+
+.liquid-glass .topbar {
+  background: var(--glass-header-solid);
+  border: 1px solid var(--glass-edge);
+  border-radius: 0 0 22px 22px;
+  box-shadow: 0 5px 20px var(--glass-shadow), inset 0 1px 0 var(--glass-edge);
+}
+
+.liquid-glass .sidebar {
+  background: var(--glass-drawer-solid);
+  color: #f1f7ff;
+  border-right: 1px solid #a6d1e78c;
+  border-radius: 0 24px 24px 0;
+  box-shadow: inset -1px 0 0 #dbf3ff2b, 8px 0 26px var(--glass-shadow);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .liquid-glass .topbar {
+    background: var(--glass-header);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    backdrop-filter: blur(16px) saturate(140%);
+  }
+
+  .liquid-glass .sidebar {
+    background: var(--glass-drawer);
+    -webkit-backdrop-filter: blur(20px) saturate(145%);
+    backdrop-filter: blur(20px) saturate(145%);
+  }
+
+  .liquid-glass .glass-menu-backdrop {
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
+  }
+}
+
+.liquid-glass .sidebar .side-label,
+.liquid-glass .sidebar .brand small,
+.liquid-glass .sidebar .side-year > small,
+.liquid-glass .sidebar .side-bottom,
+.liquid-glass .sidebar .side-bottom small,
+.liquid-glass .sidebar .side-add {
+  color: #cbddee;
+}
+
+.liquid-glass .sidebar .side-year select {
+  background: #0f263f;
+  color: #f3f8ff;
+}
+
+.liquid-glass .sidebar .side-year option {
+  color: #f3f8ff;
+}
+
+.liquid-glass .sidebar nav button {
+  color: #eaf3ff;
+  min-height: 44px;
+  border-radius: 14px;
+}
+
+.liquid-glass .sidebar nav button:hover {
+  background: #eef8ff24;
+}
+
+.liquid-glass .sidebar nav button.active {
+  color: #122744;
+  background: var(--glass-active);
+  box-shadow: inset 0 1px 1px #fff, 0 4px 12px #07162c42;
+}
+
+.liquid-glass .topbar .mobile-brand {
+  border-radius: 10px;
+  background: #122945;
+  box-shadow: inset 0 1px 0 #d7efff44;
+}
+
+.liquid-glass .topbar .icon,
+.liquid-glass .topbar .text-button {
+  color: var(--glass-muted);
+}
+
+.liquid-glass .glass-rotations {
+  border-color: var(--glass-card-border);
+  border-radius: 22px;
+}
+
+.liquid-glass .glass-rotations .rotation-list {
+  display: grid;
+  gap: 10px;
+}
+
+.liquid-glass .glass-rotations .rotation-row {
+  padding: 12px;
+  border: 1px solid var(--glass-card-border);
+  border-radius: 16px;
+  background: var(--glass-card);
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 2px 6px var(--glass-shadow);
+}
+
+.liquid-glass .glass-rotations .rotation-number {
+  flex-shrink: 0;
+  color: var(--ink);
+}
+
+.liquid-glass .glass-rotations .rotation-row strong {
+  font-size: 14px;
+}
+
+.liquid-glass .glass-rotations .rotation-row small,
+.liquid-glass .glass-rotations .rotation-row > span:nth-child(3) {
+  color: var(--glass-muted);
+}
+
+.liquid-glass .glass-menu-close,
+.liquid-glass .glass-menu-backdrop {
+  display: none;
+}
+
+@media (max-width: 680px) {
+  .liquid-glass .sidebar {
+    inset: 8px auto 8px 8px;
+    width: min(300px, calc(100vw - 54px));
+    padding: 17px 14px;
+    border: 1px solid #a6d1e78c;
+    border-radius: 25px;
+    visibility: hidden;
+    transform: translateX(calc(-100% - 10px));
+    transition: transform .2s ease, visibility 0s linear .2s;
+  }
+
+  .liquid-glass .sidebar.open {
+    visibility: visible;
+    transform: translateX(0);
+    transition-delay: 0s;
+    box-shadow: inset 0 1px 2px #e2f4ff73, 8px 4px 32px #05142856;
+  }
+
+  .liquid-glass .glass-menu-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 29;
+    background: var(--glass-scrim);
+    touch-action: none;
+  }
+
+  .liquid-glass .glass-menu-close {
+    display: inline-flex;
+    align-self: flex-end;
+    min-width: 36px;
+    min-height: 36px;
+    background: #e5f4ff1c;
+    color: #f3f8ff;
+  }
+
+  .liquid-glass .sidebar nav button {
+    font-size: 13px;
+  }
+
+  .liquid-glass .topbar {
+    margin: 6px 6px 0;
+    border-radius: 18px;
+    padding-inline: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-glass .sidebar {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .liquid-glass .sidebar nav button.active {
+    border: 2px solid Highlight;
+  }
+}
