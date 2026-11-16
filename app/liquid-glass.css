@@ -1,4 +1,4 @@
-/* Keep the strongest glass treatment on navigation and the rotation cards. */
+/* Liquid Glass surfaces for navigation, Rotations, and the dashboard. */
 .liquid-glass {
   --glass-edge: #fff;
   --glass-header-solid: #edf5ff;
@@ -12,10 +12,16 @@
   --glass-active: linear-gradient(145deg, #f0faff, #c9eaf8);
   --glass-scrim: #1636553d;
   --glass-muted: #455b76;
+  --dashboard-frost: linear-gradient(145deg, #ffffffdf, #f4f8fec5);
+  --dashboard-welcome: linear-gradient(115deg, #132e56ed, #245187e8 65%, #176677e0);
+  --dashboard-edge: #ffffffbd;
+  --dashboard-subtle: #e8f1faba;
+  --dashboard-divider: #becfe59e;
+  --dashboard-fallback: #f3f7fc;
+  --dashboard-welcome-fallback: #163765;
   min-height: 100vh;
-  background: radial-gradient(ellipse at 96% 9%, #d8f5f0 0, transparent 42rem),
-    radial-gradient(ellipse at 22% 0%, #dceaff 0, transparent 50rem),
-    var(--bg);
+  background: radial-gradient(ellipse at 95% 5%, #e3f4efbf 0, transparent 32rem),
+    linear-gradient(155deg, #f3f6fc, #dce8f8);
 }
 
 :root[data-theme="dark"] .liquid-glass {
@@ -31,6 +37,13 @@
   --glass-active: linear-gradient(145deg, #d1effc, #9ccbe5);
   --glass-scrim: #050d19a8;
   --glass-muted: #b8c9dd;
+  --dashboard-frost: linear-gradient(145deg, #21344bdb, #14283fcb);
+  --dashboard-welcome: linear-gradient(125deg, #203a56df, #153650d4 68%, #164553cb);
+  --dashboard-edge: #94c6e263;
+  --dashboard-subtle: #263e57a8;
+  --dashboard-divider: #869fba46;
+  --dashboard-fallback: #1c2d43;
+  --dashboard-welcome-fallback: #19354d;
   background: radial-gradient(ellipse at 98% 8%, #153845 0, transparent 38rem),
     radial-gradient(ellipse at 16% 0%, #17283e 0, transparent 45rem),
     #0d1828;
@@ -145,6 +158,50 @@
 .liquid-glass .glass-rotations .rotation-row small,
 .liquid-glass .glass-rotations .rotation-row > span:nth-child(3) {
   color: var(--glass-muted);
+}
+
+/* Tint the surfaces so card text, badges, and progress indicators stay opaque. */
+.liquid-glass :is(.content > .priority-inbox, .dashboard-columns > .panel, .stats-grid > .stat) {
+  background: var(--dashboard-frost);
+  border-color: var(--dashboard-edge);
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 4px 14px var(--glass-shadow);
+}
+
+.liquid-glass .content > .priority-inbox {
+  border-left-color: var(--theme-border-3566d8, #3566d8);
+  margin-bottom: 16px;
+}
+
+.liquid-glass .content > .hero {
+  background: var(--dashboard-welcome);
+  border: 1px solid var(--dashboard-edge);
+  box-shadow: inset 0 1px 0 var(--glass-edge), 0 6px 18px var(--glass-shadow);
+}
+
+.liquid-glass .dashboard-columns :is(.date-line, .session-icon) {
+  background: var(--dashboard-subtle);
+}
+
+.liquid-glass .dashboard-columns .today-row {
+  border-bottom-color: var(--dashboard-divider);
+}
+
+.liquid-glass .dashboard-columns .today-row:hover {
+  background: var(--dashboard-subtle);
+}
+
+.liquid-glass .dashboard-columns :is(.date-line, .today-row small, .balance-item small, .panel > .muted) {
+  color: var(--glass-muted);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .liquid-glass :is(.content > .priority-inbox, .dashboard-columns > .panel, .stats-grid > .stat) {
+    background: var(--dashboard-fallback);
+  }
+
+  .liquid-glass .content > .hero {
+    background: var(--dashboard-welcome-fallback);
+  }
 }
 
 .liquid-glass .glass-menu-close,
