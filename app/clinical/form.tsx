@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { ArrowLeft, ArrowRight, Save, Plus, Trash2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { fields, sectionTitles, SOURCES, type Field } from '../../lib/clinical/catalog';
-import { stateLabels, answerText, visible, validateForm, type Answer, type CaseRecord, type CaseEvent, type CaseForm } from '../../lib/clinical/model';
+import { stateLabels, answerText, visible, validateForm, dissolutionAgents, treatmentDetailsPending, type Answer, type CaseRecord, type CaseEvent, type CaseForm } from '../../lib/clinical/model';
 import { clinicalApi } from './api';
 import OutcomeEditor from './outcome-editor';
 export default function ClinicalForm({ initial, preview = false, owner = false, extraChoices = {}, focusField, onClose, onSaved, onDeleted }: {
@@ -35,6 +35,12 @@ export default function ClinicalForm({ initial, preview = false, owner = false, 
     const needs = [...(owner ? caseAttention({...form,historical:record.historical,managementUnavailable:record.managementUnavailable} as CaseRecord) : attention({...form,historical:record.historical,managementUnavailable:record.managementUnavailable} as CaseRecord)), ...reviewIssues(form,extraChoices)];
     useEffect(()=>{if(!focusField)return; const issue=[...caseAttention({...form,historical:record.historical,managementUnavailable:record.managementUnavailable} as CaseRecord),...reviewIssues(form,extraChoices)].find(i=>i.field===focusField); if(!issue)return; setStep(issue.section==='events'?sections.length:issue.section==='outcomes'?sections.length+1:sections.indexOf(Number(issue.section))); jumpToField(focusField);},[focusField]);
     const editableDraft = record.status === 'draft';
+    const updateEvents = (events: CaseEvent[]) => update({...form, events});
+    const showTimeline = () => setStep(sections.length);
+    async function skipTreatment() {
+        flushSync(() => update({...form, timelineStatus:'pending'}));
+        if (await save()) setStep(sections.length + 1);
+    }
     function update(next: CaseForm) { sequence.current++; setForm(next); setDirty(true); setConfirmed(false); }
     async function save(submit = false) { if (savingRef.current)
         return false; const snapshot = current.current, seq = sequence.current; let validation: ReturnType<typeof validateForm>; try { validation = validateForm(snapshot, submit,extraChoices,record.historical,!!record.managementUnavailable); } catch (e) { setError((e as any).issues?.[0]?.message || (e as Error).message || 'Check the entered information.'); return false; } if (validation.errors.length) {
@@ -50,6 +56,7 @@ export default function ClinicalForm({ initial, preview = false, owner = false, 
         }
         revision.current = result.record.revision;
         setRecord(result.record);
+        setErrors([]);
         if (seq === sequence.current)
             setDirty(false);
         setSavedAt(new Date().toLocaleTimeString('en-GB'));
@@ -106,10 +113,14 @@ export default function ClinicalForm({ initial, preview = false, owner = false, 
  {error && <button className="button small" onClick={onClose}>Return to workspace without saving local changes</button>}{error && <div className="banner warning" role="alert"><AlertTriangle size={17}/><div>{error}{errors.length > 1 && <details><summary>{errors.length} items need attention</summary>{errors.map((e, i) => <button className="clinical-error-link" key={i} onClick={() => { const f = fields(form.kind).find(f => f.id === e.field); setStep(e.field==='intraarterial'?sections.indexOf(5):f ? sections.indexOf(f.section) : e.field === 'outcomes' ? sections.length + 1 : sections.length); }}>{e.message}</button>)}</details>}</div></div>}
  <AttentionList form={{...form,historical:record.historical,managementUnavailable:record.managementUnavailable} as CaseRecord} owner={owner && !editableDraft} extraChoices={extraChoices} onJump={e=>{setStep(e.section === 'events' ? sections.length : e.section === 'outcomes' ? sections.length+1 : sections.indexOf(Number(e.section))); jumpToField(e.field);}}/>
  {editableDraft && <><button type="button" className="button clinical-trash-link" disabled={saving} onClick={()=>setTrashConfirm(true)}><Trash2 size={15}/>Delete draft</button>{trashConfirm && <div className="clinical-leave-shade"><section role="alertdialog" aria-modal="true" aria-label="Move draft to trash" className="clinical-leave-dialog"><h3>Move this draft to trash?</h3><p>Draft reference: {record.id}. Unsaved entries will be discarded. Only the clinical owner can restore this draft. No Drive files will be deleted.</p><button className="button" disabled={saving} onClick={()=>setTrashConfirm(false)}>Keep draft</button><button className="button" disabled={saving} onClick={async()=>{savingRef.current=true;setSaving(true);try{await clinicalApi('action',{action:'deleteDraft',id:record.id,revision:revision.current},preview);(onDeleted || onClose)();}catch(e){setError((e as Error).message);setTrashConfirm(false);}finally{savingRef.current=false;setSaving(false);}}}>Move to trash</button></section></div>}</>}
- {!review && step < sections.length && <div className="clinical-fields"><h3>{steps[step]}</h3><ClinicalFields historical={record.historical} onIntraarterial={intraarterial=>update({...form,intraarterial})} originals={record.sourceRaw} form={form} section={sections[step]} extraChoices={extraChoices} issues={needs} onChange={(id,answer)=>update({...form,answers:setConditionalAnswer(form.kind,form.answers,id,answer)})}/></div>}
- {step === sections.length && <div id="field-events"><TimelineStatus value={form.timelineStatus} onChange={timelineStatus=>update({...form,timelineStatus})}/><EventEditor events={form.events} onChange={events=>update({...form,events})}/></div>}
+ {!review && step < sections.length && <div className="clinical-fields"><h3>{steps[step]}</h3><ClinicalFields historical={record.historical} onIntraarterial={intraarterial=>update({...form,intraarterial})} originals={record.sourceRaw} form={form} section={sections[step]} onTreatmentEvents={updateEvents} onTimeline={showTimeline} extraChoices={extraChoices} issues={needs} onChange={(id,answer)=>update({...form,answers:setConditionalAnswer(form.kind,form.answers,id,answer)})}/></div>}
+ {step === sections.length && <div id="field-events"><TimelineStatus value={form.timelineStatus} onChange={timelineStatus=>update({...form,timelineStatus})}/><EventEditor events={form.events} onChange={updateEvents}/>
+ {editableDraft&&!record.historical&&<button type="button" className="button" disabled={saving} onClick={()=>void skipTreatment()}>Skip for now</button>}
+ </div>}
  {step === sections.length + 1 && <div id="field-outcomes"><OutcomeEditor value={form.outcomes} onChange={outcomes => update({ ...form, outcomes })}/></div>}
- {review && <div><h3>Review your information</h3><p className="muted">After submission you receive a case reference only. The clinical owner handles later corrections and follow-up.</p>{sections.map(n => <details className="clinical-review-section" key={n} open={n === 0}><summary>{sectionTitles[n]}</summary><dl>{fields(form.kind).filter(f => f.section === n && visible(f, form.answers)).map(f => <div key={f.id}><dt>{f.label}{f.required ? ' *' : ''}</dt><dd>{answerText(form.answers[f.id])}</dd></div>)}</dl></details>)}{form.kind==='ravc'&&<IntraarterialSummary value={form.intraarterial} historical={record.historical}/>}<p>{form.events.length} dated event(s) · {form.outcomes?.followups.length || 0} structured follow-up assessment(s)</p><button className="button small" onClick={() => setStep(sections.length + 1)}>Review outcome assessments</button><button className="button" onClick={() => { const result = validateForm(form, true,extraChoices,record.historical,!!record.managementUnavailable); setErrors(result.errors); setError(result.errors[0]?.message || ''); if (!result.errors.length)
+ {review && <div><h3>Review your information</h3>{form.timelineStatus==='pending'&&
+ <div className="banner warning"><div><strong>{treatmentDetailsPending}</strong><p>The clinical owner will see that some treatment details were deferred.</p></div>
+ <button type="button" className="button small" onClick={showTimeline}>Return to dated events</button></div>}<p className="muted">After submission you receive a case reference only. The clinical owner handles later corrections and follow-up.</p>{sections.map(n => <details className="clinical-review-section" key={n} open={n === 0}><summary>{sectionTitles[n]}</summary><dl>{fields(form.kind).filter(f => f.section === n && visible(f, form.answers)).map(f => <div key={f.id}><dt>{f.label}{f.required ? ' *' : ''}</dt><dd>{answerText(form.answers[f.id])}</dd></div>)}</dl></details>)}{form.kind==='ravc'&&<IntraarterialSummary value={form.intraarterial} historical={record.historical}/>}<p>{form.events.length} dated event(s) · {form.outcomes?.followups.length || 0} structured follow-up assessment(s)</p><button className="button small" onClick={() => setStep(sections.length + 1)}>Review outcome assessments</button><button className="button" onClick={() => { const result = validateForm(form, true,extraChoices,record.historical,!!record.managementUnavailable); setErrors(result.errors); setError(result.errors[0]?.message || ''); if (!result.errors.length)
         setError('Completeness checks passed. Review the answers, then confirm below.'); }}><CheckCircle2 size={16}/>Check completeness</button><label className="clinical-check"><input type="checkbox" checked={confirmed} onChange={e => { if (e.target.checked) {
         const result = validateForm(form, true,extraChoices,record.historical,!!record.managementUnavailable);
         setErrors(result.errors);
@@ -117,10 +128,10 @@ export default function ClinicalForm({ initial, preview = false, owner = false, 
         setConfirmed(!result.errors.length);
     }
     else
-        setConfirmed(false); }}/>I have reviewed the information and completed the required fields or marked them not applicable.</label></div>}
+        setConfirmed(false); }}/>I have reviewed the information, including any treatment details flagged as pending.</label></div>}
  {!editableDraft && <label>Reason for this clinical edit<textarea required minLength={3} maxLength={1000} value={reason} onChange={e => setReason(e.target.value)}/></label>}
- <div className="clinical-form-actions"><button className="button" disabled={saving || step === 0} onClick={() => setStep(n => n - 1)}><ArrowLeft size={15}/>Previous</button><button className="button" disabled={saving || !editableDraft && reason.trim().length < 3} onClick={() => void save()}><Save size={15}/>{editableDraft ? 'Save draft' : 'Save clinical edit'}</button>{review && editableDraft ? <button className="button primary" disabled={saving || !confirmed} onClick={() => void save(true)}>Submit case <CheckCircle2 size={15}/></button> : !review && <button className="button primary" disabled={saving} onClick={async () => { if (editableDraft && dirty && !await save())
-        return; setStep(n => n + 1); }}>Next <ArrowRight size={15}/></button>}</div></section>;
+ <div className="clinical-form-actions"><button className="button" disabled={saving || step === 0} onClick={() => setStep(n => n - 1)}><ArrowLeft size={15}/>Previous</button><button className="button" disabled={saving || !editableDraft && reason.trim().length < 3} onClick={() => void save()}><Save size={15}/>{editableDraft ? 'Save draft' : 'Save clinical edit'}</button>{review && editableDraft ? <button className="button primary" disabled={saving || !confirmed} onClick={() => void save(true)}>{form.timelineStatus==='pending'?'Submit with details pending':'Submit case'} <CheckCircle2 size={15}/></button> : !review && <button className="button primary" disabled={saving} onClick={async () => { if (editableDraft && dirty && !await save())
+        return; setStep(n => n + 1); }}>{step===sections.length?'Save & continue':'Next'} <ArrowRight size={15}/></button>}</div></section>;
 }
 export function ClinicalField({ field: f, value, onChange, extraChoices, error, errorMessage, original, sequence }: {
     field: Field;
@@ -171,8 +182,25 @@ export function ClinicalField({ field: f, value, onChange, extraChoices, error, 
     </div>;
 }
 
-export function ClinicalFields({form,section,extraChoices,issues,onChange,originals,historical=false,onIntraarterial}:{form:CaseForm;historical?:boolean;onIntraarterial?:(v:NonNullable<CaseForm['intraarterial']>)=>void;originals?:Record<string,string>;section:number;extraChoices:Record<string,string[]>;issues:{field:string;message:string}[];onChange:(id:string,value:Answer)=>void}) {
+export function ClinicalFields({form,section,extraChoices,issues,onChange,originals,historical=false,onIntraarterial,onTreatmentEvents,onTimeline}:{form:CaseForm;onTreatmentEvents?:(events:CaseEvent[])=>void;onTimeline?:()=>void;historical?:boolean;onIntraarterial?:(v:NonNullable<CaseForm['intraarterial']>)=>void;originals?:Record<string,string>;section:number;extraChoices:Record<string,string[]>;issues:{field:string;message:string}[];onChange:(id:string,value:Answer)=>void}) {
  const all=orderedFields(form.kind), show=(f:Field)=>visible(f,form.answers)||!form.answers[f.id]?.corrected&&meaningfulOriginal(originals?.[f.header]||''), render=(f:Field)=><ClinicalField key={f.id} field={f} value={form.answers[f.id]} original={originals?.[f.header]} sequence={chronology(form).find(x=>x.field===f.id)} extraChoices={extraChoices[f.id]||[]} error={issues.some(e=>e.field===f.id)} errorMessage={issues.find(e=>e.field===f.id)?.message} onChange={value=>onChange(f.id,value)}/>;
+ const agents = dissolutionAgents(form);
+ const separateDoses = !historical && agents.length > 1;
+ const medicalStatus = form.answers[form.kind + '_medical_status'];
+ const medicalPerformed = medicalStatus?.state === 'recorded' && medicalStatus.value === 'Performed';
+ const uncategorized = form.events.some(e => e.type === 'Treatment' && !e.category);
+ const combinedIds = ['ravc_dissolution_total','ravc_dissolution_unit'];
  const grouped=new Set(form.kind==='ravc'&&section===5?treatmentGroups.flatMap(g=>[g.status,...g.ids]):[]);
- return <>{form.kind==='ravc'&&section===5&&<>{treatmentGroups.map(g=>{const children=g.ids.map(id=>all.find(f=>f.id===id)!).filter(Boolean),shown=children.filter(show),status=form.answers[g.status],closed=status?.state==='none'||status?.state==='not_applicable'||status?.state==='recorded'&&['Not performed','Equipment unavailable'].includes(String(status.value));return <section key={g.status} className="clinical-treatment-group"><h3>{g.title}</h3>{render(all.find(f=>f.id===g.status)!)}{closed?<>{shown.length>0&&<details><summary>Preserved treatment details / original content</summary>{shown.map(render)}</details>}</>:shown.map(render)}{closed&&<details><summary>Remaining fields: Not applicable</summary><dl>{children.filter(f=>!show(f)).map(f=><div key={f.id}><dt>{f.label}</dt><dd>Not applicable</dd></div>)}</dl></details>}</section>;})}{onIntraarterial&&<IntraarterialEditor value={form.intraarterial} historical={historical} onChange={onIntraarterial}/>}</>}{all.filter(f=>f.section===section&&show(f)&&!grouped.has(f.id)).map(render)}</>;
+ return <>{form.kind==='ravc'&&section===5&&<>{treatmentGroups.map(g=>{const children=g.ids.map(id=>all.find(f=>f.id===id)!).filter(Boolean),shown=children.filter(f=>show(f)&&!(separateDoses&&combinedIds.includes(f.id))),status=form.answers[g.status],closed=status?.state==='none'||status?.state==='not_applicable'||status?.state==='recorded'&&['Not performed','Equipment unavailable'].includes(String(status.value));return <section key={g.status} className="clinical-treatment-group"><h3>{g.title}</h3>{render(all.find(f=>f.id===g.status)!)}{closed?<>{shown.length>0&&<details><summary>Preserved treatment details / original content</summary>{shown.map(render)}</details>}</>:shown.map(render)}{g.status==='ravc_dissolution_status'&&!closed&&agents.length>0&&<>
+ {separateDoses&&<div id="field-ravc_dissolution_total" tabIndex={-1}><p>Record each agent’s dose separately. The combined total does not apply.</p>
+ {combinedIds.some(id=>form.answers[id]?.value)&&<details><summary>Previously saved combined total</summary>
+ {combinedIds.map(id=>form.answers[id]?.value?<p key={id}>{String(form.answers[id].value)}</p>:null)}</details>}</div>}
+ {onTreatmentEvents&&<EventEditor category="dissolution" agents={agents} events={form.events} onChange={onTreatmentEvents}/>}
+ </>}{closed&&<details><summary>Remaining fields: Not applicable</summary><dl>{children.filter(f=>!show(f)).map(f=><div key={f.id}><dt>{f.label}</dt><dd>Not applicable</dd></div>)}</dl></details>}</section>;})}{onIntraarterial&&<IntraarterialEditor value={form.intraarterial} historical={historical} onChange={onIntraarterial}/>}</>}{all.filter(f=>f.section===section&&show(f)&&!grouped.has(f.id)).map(render)}
+ {section===5&&onTreatmentEvents&&medicalPerformed&&<section className="clinical-treatment-group">
+ <h3>Prescribed medications</h3><p className="muted">Entries here also appear in Dated events.</p>
+ <EventEditor category="medication" events={form.events} onChange={onTreatmentEvents}/>
+ </section>}
+ {section===5&&uncategorized&&onTimeline&&<button type="button" className="button small" onClick={onTimeline}>Review uncategorized treatment in Dated events</button>}
+ </>;
 }

@@ -52,3 +52,48 @@ test('20 historical rows use constant reads and one atomic write for IDs, record
 test('historical batch retry after a lost response skips committed records without duplicate rows or folders',async()=>{const f=importBatchFixture(3),preview=await importPreview(f.repo,'ravc');f.loseNextResponse();await assert.rejects(commitImport(f.repo,'ravc',preview.map(c=>({row:c.row,fingerprint:c.fingerprint})),'owner'),/Response lost/);assert.equal(f.state.registry.length,3);const updated=await importPreview(f.repo,'ravc');const result=await commitImport(f.repo,'ravc',updated.map(c=>({row:c.row,fingerprint:c.fingerprint})),'owner');assert.deepEqual(result,{imported:0,skipped:3});assert.equal(f.state.registry.length,3);assert.equal(f.state.revisions.length,3);});
 test('rejected atomic import and duplicate selections leave source IDs and registry rows unchanged',async()=>{const f=importBatchFixture(2),preview=await importPreview(f.repo,'ravc'),selection=preview.map(c=>({row:c.row,fingerprint:c.fingerprint}));await assert.rejects(commitImport(f.repo,'ravc',[selection[0],selection[0]],'owner'),/distinct/);f.reject(true);await assert.rejects(commitImport(f.repo,'ravc',selection,'owner'),/429/);assert.equal(f.state.registry.length,0);assert.equal(f.state.revisions.length,0);assert.equal(f.state.source.every(row=>row[40]===''),true);f.reject(false);assert.deepEqual(await commitImport(f.repo,'ravc',selection,'owner'),{imported:2,skipped:0});});
 test('Google quota retries are bounded, respect long Retry-After and never retry uncertain network writes',async()=>{const {GoogleClient}=await load('netlify/server/clinical/google');let attempts=0;const pauses=[];const client=new GoogleClient('fictional',async()=>++attempts<3?new Response('',{status:429}):Response.json({ok:true}),async ms=>{pauses.push(ms)});assert.deepEqual(await client.request('sheets/v4/spreadsheets/fixture:batchUpdate','POST',{requests:[]}),{ok:true});assert.equal(attempts,3);assert.ok(pauses[0]>=1000&&pauses[0]<1250);assert.ok(pauses[1]>=2000&&pauses[1]<2250);let blockedCalls=0;const blocked=new GoogleClient('fictional',async()=>{blockedCalls++;return new Response('',{status:429,headers:{'Retry-After':'60'}})},async()=>assert.fail('Must not block a function for a long wait'));await assert.rejects(blocked.values('fixture','A1'),/Wait at least 60 seconds/);assert.equal(blockedCalls,1);let networkCalls=0;const uncertain=new GoogleClient('fictional',async()=>{networkCalls++;throw Error('Network failure')},async()=>assert.fail('Uncertain writes must not be retried'));await assert.rejects(uncertain.request('sheets/v4/spreadsheets/fixture:batchUpdate','POST',{}),/Network failure/);assert.equal(networkCalls,1);let repeated=0;const exhausted=new GoogleClient('fictional',async()=>{repeated++;return new Response('',{status:429})},async()=>{});await assert.rejects(exhausted.values('fixture','A1'),/rate limited/);assert.equal(repeated,3);});
+
+test('intake accepts dated medication with explicit unknown details and separate dissolution doses', () => {
+ const form = complete('ravc');
+ form.timelineStatus = 'recorded';
+ form.answers.ravc_medical_status = answer('Performed');
+ form.answers.ravc_dissolution_status = answer('Performed');
+ form.answers.ravc_AC = {state:'recorded',value:['Hyaluronidase','Saline']};
+ form.answers.ravc_dissolution_total = answer('1000');
+ form.answers.ravc_dissolution_unit = answer('IU');
+ const treatment = {type:'Treatment',date:'2026-08-02',datePrecision:'day',details:''};
+ form.events = [
+  {...treatment,id:crypto.randomUUID(),title:'Medication',category:'medication',agent:'Test agent',stopDate:'2026-08-09',unknownDetails:['dose','route','frequency','duration']},
+  {...treatment,id:crypto.randomUUID(),title:'Dissolution',category:'dissolution',agent:'Hyaluronidase',amount:'500',unit:'IU'},
+  {...treatment,id:crypto.randomUUID(),title:'Dissolution',category:'dissolution',agent:'Saline',unknownDetails:['dose']},
+ ];
+ const result = validateForm(form,true);
+ assert.deepEqual(result.errors,[]);
+ assert.equal(result.form.answers.ravc_dissolution_total.state,'not_applicable');
+ assert.equal(result.form.answers.ravc_dissolution_total.value,'1000');
+ assert.equal(result.form.events[0].stopDate,'2026-08-09');
+ form.events[0].stopDate='2026-08-01';
+ assert.ok(validateForm(form,true).errors.some(e=>e.message.includes('stop date')));
+});
+
+test('skip defers missing treatment details only, retains partial entries, and still validates recorded values', () => {
+ const form = complete('ravc');
+ form.timelineStatus = 'recorded';
+ form.answers.ravc_medical_status = answer('Performed');
+ form.answers.ravc_dissolution_status = answer('Performed');
+ form.answers.ravc_AC = {state:'recorded',value:['Hyaluronidase','Saline']};
+ form.events = [{type:'Treatment',category:'medication',title:'Medication',datePrecision:'day',date:'',
+  id:crypto.randomUUID(),details:'',agent:'Test agent',amount:'10'}];
+ assert.deepEqual(validateForm(form,false).errors,[]);
+ assert.ok(validateForm(form,true).errors.some(e=>e.message.includes('each selected agent')));
+ const result=validateForm({...form,timelineStatus:'pending'},true);
+ assert.deepEqual(result.errors,[]);
+ assert.ok(result.deferred.length>=2);
+ assert.equal(result.form.events[0].amount,'10');
+ assert.equal(result.form.timelineStatus,'pending');
+ delete form.answers.ravc_B;
+ form.events[0].amount='text';
+ const invalid=validateForm({...form,timelineStatus:'pending'},true);
+ assert.ok(invalid.errors.some(e=>e.field==='ravc_B'));
+ assert.ok(invalid.errors.some(e=>e.message.includes('nonnegative numerical amount')));
+});
