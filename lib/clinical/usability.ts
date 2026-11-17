@@ -5,13 +5,20 @@ import type { EditSection } from './edit';
 export type Attention = { field: string; label: string; message: string; section: EditSection; review?: boolean };
 export function attention(form: CaseForm): Attention[] {
     let errors: {field:string;message:string}[] = [];
-    try { errors = validateForm(form, true,{},!!(form as CaseRecord).historical,!!(form as CaseRecord).managementUnavailable).errors; }
+    try {
+        const validation = validateForm(form, true,{},!!(form as CaseRecord).historical,!!(form as CaseRecord).managementUnavailable);
+        errors = validation.errors;
+        if ((form as CaseRecord).status && (form as CaseRecord).status !== 'draft') errors = [...errors, ...validation.deferred];
+    }
     catch (e) { errors = ((e as any).issues || []).map((i: any) => { const p = i.path || []; return { field: p[0] === 'answers' ? p[1] : p[0] || 'outcomes', message: p.filter((x: any) => x !== 'answers').join(' → ') + ': ' + i.message }; }); }
     return errors.map(e => { const f = fields(form.kind).find(f => f.id === e.field); return { ...e, label: f?.label || (e.field === 'events' ? 'History & management timeline' : 'Outcome & follow-up'), section: e.field==='intraarterial'?'5':f ? String(f.section) as EditSection : e.field === 'events' ? 'events' : 'outcomes' }; });
 }
 /** Clinical completeness is separate from submission validation and export status. */
 export function caseAttention(form: CaseForm): Attention[] {
  const issues = attention(form).filter(i=>!hasAnswer(form.answers[i.field]));
+ if (form.timelineStatus === 'pending' && !issues.some(issue => issue.field === 'events')) {
+  issues.push({field:'events',label:'Treatment details pending',section:'events',message:'Review the deferred treatment details.'});
+ }
  const essential = form.kind === 'ravc'
   ? ['ravc_sex','ravc_D','ravc_Q','ravc_W','ravc_K','ravc_AB','ravc_AC','ravc_AI','ravc_R']
   : ['nodule_D','nodule_C','nodule_K','nodule_R','nodule_M','nodule_CM','nodule_CO','nodule_CV'];
