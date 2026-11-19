@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "RAMA Derm Sx",
+  "short_name": "RAMA Derm Sx",
+  "description": "Dermatosurgery fellowship schedules, rotations and coverage.",
+  "lang": "en",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F3F6FC",
+  "theme_color": "#102747",
+  "icons": [
+    {"src": "/icons/app-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/icons/app-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/icons/app-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
