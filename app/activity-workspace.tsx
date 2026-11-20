@@ -1,7 +1,7 @@
 'use client';
 import {PresentationRecordPanel} from './presentations';
 import {clientId} from '../lib/client-id';
-import {useEffect,useMemo,useRef,useState,useCallback} from 'react';
+import {useEffect,useMemo,useRef,useState,useCallback,lazy,Suspense} from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -11,7 +11,7 @@ import type {EventInput} from '@fullcalendar/core';
 import {Plus,Layers,Users,Copy,Trash2,Edit3,MapPin,Video,Repeat,History,AlertTriangle,ChevronLeft,ChevronRight,CalendarDays,RefreshCw,Globe,ShieldCheck,CheckCircle2} from 'lucide-react';
 import {ActivitySummary,bangkokToday} from './activity-summary';
 import ActivityEditor,{ActivityDialog} from './activity-editor';
-import ActivityExport from './activity-export';
+const ActivityExport=lazy(()=>import('./activity-export'));
 import ActivityLibrary from './activity-library';
 import {academicStart,academicEnd,activityTypes,activityColors,activityEditable,activityDeleteTargets,activityConflicts,activityFields,emptyActivity,parseActivity,type Activity,type ActivityDraft,type ActivityRow,type ActivityActor} from '../lib/activities';
 import {add,dates,weekday,assignment,fellowName,type Year,type Plan,type Slot,type Assignment} from '../lib/schedule';
@@ -47,7 +47,7 @@ useEffect(()=>{if(initialOpenId){setDetailsId(initialOpenId);clearOpenId?.()}},[
  const today=bangkokToday();const dateActivities=filtered.filter(a=>a.date===date);const groupActivity=(session:string)=>dateActivities.filter(a=>session==='All day'?a.allDay:!a.allDay&&(session==='Morning'?a.start<'12:00':a.start>='12:00'));
  const detailsPrivate=cohort;const showWork=source!=='Activities';
  return <>
- {exporting&&<ActivityExport year={year} activities={activities} staff={staff} onClose={()=>setExporting(false)}/>}
+ {exporting&&<Suspense fallback={<section className="panel" role="status">Loading export tools…</section>}><ActivityExport year={year} activities={activities} staff={staff} onClose={()=>setExporting(false)}/></Suspense>}
  <section className="panel activity-workspace">
  <div className="activity-toolbar"><div><span className="eyebrow">{toolsOnly?'ADMIN LIBRARY':source==='Combined'?'CLINICS & LEARNING':source==='Work'?'CLINIC AGENDA':'LEARN TOGETHER'}</span><h2>{toolsOnly?'Prepare your teaching programme':source==='Combined'?'Combined calendar':source==='Work'?'Work schedule agenda':'Activity schedule'}</h2><p className="muted">{toolsOnly?'Prepare reusable activities and add a programme in bulk.':'All times ICT (UTC+7). Activity changes appear immediately.'}</p></div><div className="activity-inline-actions"><button className="button" onClick={()=>setExporting(true)}>Export activities</button>{canCreate&&source!=='Work'&&<button className="button primary" disabled={busy} onClick={()=>create()}><Plus size={16}/>New activity</button>}{admin&&<><button className="button" onClick={()=>setLibrary('templates')}><Layers size={16}/>Templates & bulk add</button><button className="button" onClick={()=>setLibrary('staff')}><Users size={16}/>Staff directory</button></>}</div></div>
  {error&&<div className="banner warning" role="alert">{error}</div>}{message&&<div className="banner" role="status"><CheckCircle2 size={16}/>{message}</div>}

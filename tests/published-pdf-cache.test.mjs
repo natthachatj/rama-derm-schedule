@@ -1,0 +1,12 @@
+import {test,after} from 'node:test';
+import assert from 'node:assert/strict';
+import {build} from 'esbuild';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {pathToFileURL} from 'node:url';
+const dir=await mkdtemp(new URL('../.auth-test-',import.meta.url));
+await build({entryPoints:['netlify/server/published-pdf-cache.ts','lib/schedule.ts'],outdir:dir,outbase:'.',bundle:true,platform:'node',format:'esm',packages:'external'});
+const {publishedPdfResponse,publishedPdfInput}=await import(pathToFileURL(dir+'/netlify/server/published-pdf-cache.js'));
+const {seed}=await import(pathToFileURL(dir+'/lib/schedule.js'));
+after(()=>rm(dir,{recursive:true,force:true}));
+test('public PDF is reused; published edits invalidate it; conditional downloads avoid generation',async()=>{const y=seed().years[0];y.published=structuredClone(y.draft);y.publishedAt='2026-11-20T00:00:00Z';let builds=0;const rows=new Map(),cache={get:async k=>rows.get(k)||null,set:async(k,b)=>rows.set(k,Uint8Array.from(b).buffer)},generate=async()=>new Uint8Array([++builds]);const req=new Request('https://test.org/api/schedule/pdf?year=2026');const a=await publishedPdfResponse(req,y,cache,generate);assert.equal(builds,1);const tag=a.headers.get('etag');await publishedPdfResponse(req,y,cache,generate);assert.equal(builds,1);const conditional=await publishedPdfResponse(new Request(req,{headers:{'If-None-Match':tag}}),y,cache,generate);assert.equal(conditional.status,304);assert.equal(builds,1);y.fellows[0].nick='New nickname';const changed=await publishedPdfResponse(req,y,cache,generate);assert.equal(builds,2);assert.notEqual(changed.headers.get('etag'),tag);assert.ok(!JSON.stringify(publishedPdfInput(y)).includes('leaveAllowance'))});
+test('PDF cache failure still returns the generated download',async()=>{const y=seed().years[0];y.published=structuredClone(y.draft);const cache={get:async()=>{throw Error()},set:async()=>{throw Error()}};const response=await publishedPdfResponse(new Request('https://test.org/pdf'),y,cache,async()=>new Uint8Array([1,2]));assert.equal(response.status,200);assert.equal((await response.arrayBuffer()).byteLength,2)});

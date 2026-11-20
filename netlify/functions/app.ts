@@ -2,15 +2,15 @@ import {handleClinical} from '../server/clinical/handler';
 import {clinicalGoogleStart,clinicalGoogleCallback} from '../server/clinical/google';
 import {thaiHolidayResponse} from '../../lib/thai-holidays';
 import {createScheduleApi} from '../../lib/schedule-api';
-import {buildPublishedPdf} from '../../lib/published-pdf';
+import {publishedPdfResponse} from '../server/published-pdf-cache';
 import {loadSnapshot,saveSnapshot} from '../server/store';
-import {getAuthenticatedUser,googleStart,googleCallback,logout,siteOrigin} from '../server/auth';
+import {getAuthenticatedUser,googleStart,googleCallback,logout,siteOrigin,renewSessionResponse,revokeSessions} from '../server/auth';
 import {validateBackup} from '../../lib/backup-schema';
 import {validatePasswordUsernames} from '../server/password-store';
 import {handlePasswordAuth} from '../server/password-auth';
 import {emailConfigured,handleEmailAuth} from '../server/email-auth';
 const json=(v:unknown,status=200)=>Response.json(v,{status,headers:{'Cache-Control':'no-store'}});
-export default async function handler(request:Request,context?:{ip?:string}){try{const path=new URL(request.url).pathname;const user=()=>getAuthenticatedUser(request);const api=createScheduleApi({load:loadSnapshot,save:saveSnapshot,getUser:user,adminEmail:()=>process.env.ADMIN_EMAIL,validateFellows:validatePasswordUsernames});
+async function dispatch(request:Request,context?:{ip?:string}){try{const path=new URL(request.url).pathname;const user=()=>getAuthenticatedUser(request);const api=createScheduleApi({load:loadSnapshot,save:saveSnapshot,getUser:user,adminEmail:()=>process.env.ADMIN_EMAIL,validateFellows:validatePasswordUsernames});
  if(path==='/auth/clinical/google/start'&&request.method==='GET')return await clinicalGoogleStart(request);
  if(path==='/auth/clinical/google/callback'&&request.method==='GET')return await clinicalGoogleCallback(request);
  if(path.startsWith('/api/clinical/'))return await handleClinical(request);
@@ -19,8 +19,10 @@ export default async function handler(request:Request,context?:{ip?:string}){try
  if(['/auth/email/request','/auth/email/verify'].includes(path)&&request.method==='POST')return await handleEmailAuth(request,context?.ip||'unknown');
  if(path==='/auth/google/start'&&request.method==='GET')return await googleStart(request);
  if(path==='/auth/google/callback'&&request.method==='GET')return await googleCallback(request);
+ if(path==='/auth/session/revoke')return await revokeSessions(request);
  if(path==='/auth/logout'&&request.method==='GET')return logout();
  if(path==='/api/admin/thai-holidays'&&request.method==='GET')return await thaiHolidayResponse(request,await user(),process.env.ADMIN_EMAIL);
+ if(path==='/api/schedule/version'&&request.method==='GET')return await api.VERSION();
  if(path==='/api/schedule'&&request.method==='GET')return await api.GET();
  if(path==='/api/schedule'&&request.method==='POST')return await api.POST(request);
  if(path==='/api/admin/backup'&&request.method==='GET')return await api.BACKUP();
@@ -35,8 +37,10 @@ export default async function handler(request:Request,context?:{ip?:string}){try
  if(path==='/api/schedule/pdf'&&request.method==='GET'){
   const year=Number(new URL(request.url).searchParams.get('year'));if(!Number.isInteger(year)||year<2020||year>2100)return json({error:'Select a valid academic year.'},400);
   const {state}=await loadSnapshot();const y=state.years.find(y=>y.year===year);if(!y?.published)return json({error:'Publish this academic year before exporting.'},404);
-  const safe={year:y.year,published:y.published,publishedAt:y.publishedAt,fellows:y.fellows.map(f=>({id:f.id,first:f.first,last:f.last,nick:f.nick,displayName:f.displayName,color:f.color,email:''}))};const bytes=await buildPublishedPdf(safe);return new Response(bytes as BodyInit,{headers:{'Content-Type':'application/pdf','Content-Disposition':`attachment; filename="RAMA-Derm-Published-Schedule-${year}-${year+1}.pdf"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+  return await publishedPdfResponse(request,y);
  }
  return json({error:'Not found.'},404);
  }catch{return json({error:'The service is unavailable. Please contact the administrator.'},503)}}
-export const config={path:['/api/clinical/*','/auth/clinical/google/start','/auth/clinical/google/callback','/api/admin/thai-holidays','/auth/password/login','/auth/password/change','/auth/password/status','/api/admin/accounts','/api/auth/methods','/auth/email/request','/auth/email/verify','/api/schedule','/api/schedule/pdf','/api/admin/backup','/api/admin/import','/auth/google/start','/auth/google/callback','/auth/logout']};
+export const config={path:['/api/clinical/*','/auth/clinical/google/start','/auth/clinical/google/callback','/api/admin/thai-holidays','/auth/password/login','/auth/password/change','/auth/password/status','/api/admin/accounts','/api/auth/methods','/auth/email/request','/auth/email/verify','/api/schedule','/api/schedule/version','/api/schedule/pdf','/auth/session/revoke','/api/admin/backup','/api/admin/import','/auth/google/start','/auth/google/callback','/auth/logout']};
+
+export default async function handler(request:Request,context?:{ip?:string}){const response=await dispatch(request,context);try{return await renewSessionResponse(request,response)}catch{return response}}

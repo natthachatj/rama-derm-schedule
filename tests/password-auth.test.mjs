@@ -7,9 +7,12 @@ const dir=await mkdtemp(new URL('../.auth-test-',import.meta.url));
 await build({entryPoints:['netlify/server/password-auth.ts','netlify/server/password-store.ts','netlify/server/auth.ts','lib/schedule-api.ts','lib/schedule.ts'],outdir:dir,outbase:'.',bundle:true,platform:'node',target:'node22',format:'esm',packages:'external'});
 const {createPasswordAuth,hashPassword,matchesPassword}=await import(pathToFileURL(`${dir}/netlify/server/password-auth.js`));
 const {readPasswordSession}=await import(pathToFileURL(`${dir}/netlify/server/password-store.js`));
-const {getAuthenticatedUser,verifyPayload,logout}=await import(pathToFileURL(`${dir}/netlify/server/auth.js`));
+const {getAuthenticatedUser:authenticate,verifyPayload,logout}=await import(pathToFileURL(`${dir}/netlify/server/auth.js`));
 const {createScheduleApi}=await import(pathToFileURL(`${dir}/lib/schedule-api.js`));
 const {seed,makeYear}=await import(pathToFileURL(`${dir}/lib/schedule.js`));
+const generations=new Map();let generationVersion=0;
+const sessionStore={async read(key){return generations.get(key)||null},async write(key,data,etag){const row=generations.get(key);if(etag?row?.etag!==etag:!!row)return false;generations.set(key,{data,etag:String(++generationVersion)});return true}};
+const getAuthenticatedUser=(request,read)=>authenticate(request,read,sessionStore);
 process.env.SITE_URL='https://schedule.example.org';process.env.SESSION_SECRET='password-tests-session-secret-at-least-32-bytes';process.env.ADMIN_EMAIL='owner@example.org';
 after(()=>rm(dir,{recursive:true,force:true}));
 function fixture(){
@@ -17,7 +20,7 @@ function fixture(){
  const store={async read(key){return rows.has(key)?structuredClone(rows.get(key)):null},async write(key,data,etag){const row=rows.get(key);if(etag?row?.etag!==etag:!!row)return false;rows.set(key,{data:structuredClone(data),etag:String(++version)});return true}};
  const read=(id,ver)=>readPasswordSession(id,ver,store,async()=>state);
  const user=async req=>req.headers.get('cookie')?.includes('__Host-rama_session=')?getAuthenticatedUser(req,read):external;
- const handler=createPasswordAuth({store,getUser:user,workspace:async()=>state,now:()=>clock});
+ const handler=createPasswordAuth({store,sessionStore,getUser:user,workspace:async()=>state,now:()=>clock});
  const request=(path,data,cookie='',origin=process.env.SITE_URL)=>new Request(process.env.SITE_URL+path,{method:data===undefined?'GET':'POST',headers:{'Content-Type':'application/json',Origin:origin,Cookie:cookie},...(data===undefined?{}:{body:JSON.stringify(data)})});
  const call=(path,data,cookie='',ip='ip1')=>handler(request(path,data,cookie),ip);
  const cookie=(r,name)=>r.headers.getSetCookie().find(c=>c.startsWith(name+'='))?.split(';')[0]||'';
@@ -83,3 +86,13 @@ test('Staff ID is the canonical login username; edits keep the password and do n
  f.external({userId:'owner',email:process.env.ADMIN_EMAIL,displayName:'Owner',fullName:null});const list=await(await f.call('/api/admin/accounts')).json();assert.equal(list.accounts[0].username,'009999');
 });
 test('new fellow password accounts require a saved Staff ID',async()=>{const f=fixture();const response=await f.call('/api/admin/accounts',{action:'create',username:'chosen-name',target:{kind:'fellow',year:2026,fellow:'f1'}});assert.equal(response.status,400);assert.match((await response.json()).error,/Staff ID/)});
+test('unchecked remember choice survives temporary-password activation and later password changes',async()=>{
+ const f=fixture(),a=await f.create();f.external(null);
+ const login=await f.call('/auth/password/login',{username:a.account.username,password:a.temporaryPassword,remember:false});
+ const changeToken=f.cookie(login,'__Host-rama_password_change');
+ const activated=await f.call('/auth/password/change',{password:'a deliberately short session password'},changeToken);
+ assert.equal(activated.status,200);assert.match(activated.headers.getSetCookie().find(c=>c.startsWith('__Host-rama_session=')),/Max-Age=28800/);
+ const session=f.cookie(activated,'__Host-rama_session');
+ const changed=await f.call('/auth/password/change',{currentPassword:'a deliberately short session password',password:'another deliberately short session password'},session);
+ assert.equal(changed.status,200);assert.match(changed.headers.getSetCookie().find(c=>c.startsWith('__Host-rama_session=')),/Max-Age=28800/);
+});
