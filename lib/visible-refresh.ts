@@ -1,9 +1,11 @@
-export const VISIBLE_REFRESH_MS=3*60*1000;
 type VisibilitySource={visibilityState:string;addEventListener:(type:'visibilitychange',listener:()=>void)=>void;removeEventListener:(type:'visibilitychange',listener:()=>void)=>void};
-type Clock={setInterval:(callback:()=>void,delay:number)=>unknown;clearInterval:(timer:unknown)=>void};
-export function startVisibleRefresh(source:VisibilitySource,refresh:()=>void,clock:Clock={setInterval:(callback,delay)=>globalThis.setInterval(callback,delay),clearInterval:timer=>globalThis.clearInterval(timer as ReturnType<typeof setInterval>)} ){
- let timer:unknown=null,visible=false,disposed=false;
- function sync(){if(disposed)return;const next=source.visibilityState==='visible';if(next===visible)return;visible=next;if(timer!==null){clock.clearInterval(timer);timer=null}if(visible){refresh();timer=clock.setInterval(()=>{if(!disposed&&source.visibilityState==='visible')refresh()},VISIBLE_REFRESH_MS)}}
- source.addEventListener('visibilitychange',sync);sync();return()=>{disposed=true;source.removeEventListener('visibilitychange',sync);if(timer!==null)clock.clearInterval(timer);timer=null};
+type WakeSource={addEventListener:(type:string,listener:()=>void)=>void;removeEventListener:(type:string,listener:()=>void)=>void};
+// Event-driven checks only. No polling or keep-alive intervals.
+export function startVisibleRefresh(source:VisibilitySource,refresh:()=>void,wake:WakeSource|undefined=typeof window==='undefined'?undefined:window){
+ let visible=false,disposed=false;
+ const check=()=>{if(!disposed&&source.visibilityState==='visible')refresh()};
+ function sync(){const next=source.visibilityState==='visible';if(next===visible)return;visible=next;if(visible)check()}
+ source.addEventListener('visibilitychange',sync);wake?.addEventListener('focus',check);wake?.addEventListener('online',check);wake?.addEventListener('pageshow',check);sync();
+ return()=>{disposed=true;source.removeEventListener('visibilitychange',sync);for(const type of ['focus','online','pageshow'])wake?.removeEventListener(type,check)};
 }
 export function acceptsSnapshot(currentRevision:number,nextRevision:unknown){return typeof nextRevision==='number'&&Number.isFinite(nextRevision)&&nextRevision>=currentRevision;}

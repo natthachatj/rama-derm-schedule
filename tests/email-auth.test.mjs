@@ -6,15 +6,18 @@ import {pathToFileURL} from 'node:url';
 const dir=await mkdtemp(new URL('../.auth-test-',import.meta.url));
 await build({entryPoints:['netlify/server/email-auth.ts','netlify/server/auth.ts','lib/schedule-api.ts','lib/schedule.ts'],outdir:dir,outbase:'.',bundle:true,platform:'node',target:'node22',format:'esm',packages:'external'});
 const {createEmailAuth,sendCode}=await import(pathToFileURL(`${dir}/netlify/server/email-auth.js`));
-const {getAuthenticatedUser,signPayload}=await import(pathToFileURL(`${dir}/netlify/server/auth.js`));
+const {getAuthenticatedUser:authenticate,signPayload}=await import(pathToFileURL(`${dir}/netlify/server/auth.js`));
 const {createScheduleApi}=await import(pathToFileURL(`${dir}/lib/schedule-api.js`));
 const {seed}=await import(pathToFileURL(`${dir}/lib/schedule.js`));
+const generations=new Map();let generationVersion=0;
+const sessionStore={async read(key){return generations.get(key)||null},async write(key,data,etag){const row=generations.get(key);if(etag?row?.etag!==etag:!!row)return false;generations.set(key,{data,etag:String(++generationVersion)});return true}};
+const getAuthenticatedUser=(request,read)=>authenticate(request,read,sessionStore);
 process.env.SITE_URL='https://schedule.example.org';process.env.SESSION_SECRET='test-session-secret-with-at-least-32-bytes';
 after(()=>rm(dir,{recursive:true,force:true}));
 function fixture(){
  let clock=Date.now(),version=0;const rows=new Map(),sent=[];const members=new Map([['fellow@hospital.org',{email:'fellow@hospital.org',name:'Fellow One'}],['admin@hospital.org',{email:'admin@hospital.org',name:'Admin'}]]);
  const store={async read(key){const row=rows.get(key);return row?structuredClone(row):null},async write(key,data,etag){const row=rows.get(key);if(etag?row?.etag!==etag:!!row)return false;rows.set(key,{data:structuredClone(data),etag:String(++version)});return true}};
- const deps={store,lookup:async email=>members.get(email)||null,send:async(email,code,id)=>{sent.push({email,code,id})},now:()=>clock,configured:()=>true};
+ const deps={store,sessionStore,lookup:async email=>members.get(email)||null,send:async(email,code,id)=>{sent.push({email,code,id})},now:()=>clock,configured:()=>true};
  const handler=createEmailAuth(deps);
  const req=(path,data,cookie='',origin=process.env.SITE_URL)=>new Request(process.env.SITE_URL+path,{method:'POST',headers:{'Content-Type':'application/json',Origin:origin,Cookie:cookie},body:JSON.stringify(data)});
  async function start(email='fellow@hospital.org',ip='ip1'){const response=await handler(req('/auth/email/request',{email}),ip);return {response,cookie:(response.headers.get('set-cookie')||'').split(';')[0],code:sent.at(-1)?.code}}

@@ -15,7 +15,7 @@ export async function hashPassword(password:string){const salt=randomBytes(16).t
 export async function matchesPassword(password:string,hash:string){const parts=hash.split('$');if(parts.length!==6||parts.slice(0,4).join('$')!=='scrypt$32768$8$3'||! /^[a-f0-9]{32}$/.test(parts[4])||! /^[a-f0-9]{64}$/.test(parts[5]))return false;return timingSafeEqual(await scrypt(password,parts[4]),Buffer.from(parts[5],'hex'))}
 function passwordValid(value:unknown):value is string{return typeof value==='string'&&value.length>=15&&value.length<=128}
 function isAdmin(user:AppUser|null){return !!user&&(user.localAccess?user.localAccess.admin:normalize(user.email)===normalize(process.env.ADMIN_EMAIL||''))}
-export function createPasswordAuth(deps:{store:PasswordStore;getUser:(request:Request)=>Promise<AppUser|null>;workspace:()=>Promise<Workspace>;now?:()=>number}){
+export function createPasswordAuth(deps:{store:PasswordStore;getUser:(request:Request)=>Promise<AppUser|null>;workspace:()=>Promise<Workspace>;now?:()=>number;sessionStore?:PasswordStore}){
  const now=deps.now||Date.now;
  const registry=async()=>{const row=await deps.store.read('accounts');return {row,accounts:(row?.data as Registry|undefined)?.accounts||[]}};
  async function edit(update:(accounts:PasswordAccount[])=>PasswordAccount[]){for(let i=0;i<8;i++){const {row,accounts}=await registry();const next=update(structuredClone(accounts));if(await deps.store.write('accounts',{accounts:next},row?.etag))return next}throw new LoginError('An account changed elsewhere. Please try again.',409)}
@@ -29,7 +29,7 @@ export function createPasswordAuth(deps:{store:PasswordStore;getUser:(request:Re
   try{const data=JSON.parse(text+decoder.decode());if(!data||typeof data!=='object'||Array.isArray(data))throw Error();return data}catch{throw new LoginError('Invalid request.');}
  }
  async function targetExists(target:AccountTarget){if(target.kind==='admin')return true;const state=await deps.workspace();return !!state.years.find(y=>y.year===target.year)?.fellows.some(f=>f.id===target.fellow)}
- async function session(account:PasswordAccount){return sessionCookie({provider:'password',sub:account.id,version:account.version})}
+ async function session(account:PasswordAccount,remember=true){return sessionCookie({provider:'password',sub:account.id,version:account.version},remember,deps.sessionStore||deps.store)}
  async function login(request:Request,ip:string){
   const data=await input(request);await limit('login-ip/'+digest(ip),20);await limit('login-global',100);
   if(typeof data.username!=='string'||data.username.length>64||typeof data.password!=='string'||data.password.length>128)throw denied();
@@ -40,23 +40,23 @@ export function createPasswordAuth(deps:{store:PasswordStore;getUser:(request:Re
   // Re-read after expensive hashing so a concurrent reset cannot issue a stale session.
   const current=(await registry()).accounts.find(a=>a.id===account.id);
   if(!current||current.version!==account.version||current.disabled)throw denied();
-  if(current.mustChange){const token=await signPayload({sub:current.id,version:current.version},'password-change',600);return json({mustChange:true,redirect:'/password'},200,{'Set-Cookie':cookie(CHANGE,token,600)})}
-  return json({ok:true,redirect:'/'},200,{'Set-Cookie':await session(current)});
+  if(current.mustChange){const token=await signPayload({sub:current.id,version:current.version,remember:data.remember!==false},'password-change',600);return json({mustChange:true,redirect:'/password'},200,{'Set-Cookie':cookie(CHANGE,token,600)})}
+  return json({ok:true,redirect:'/'},200,{'Set-Cookie':await session(current,data.remember!==false)});
  }
  async function changeIdentity(request:Request){
-  const token=cookies(request)[CHANGE];if(token){try{const p=await verifyPayload(token,'password-change');const account=(await registry()).accounts.find(a=>a.id===p.sub&&a.version===p.version&&!a.disabled&&a.mustChange);if(account)return {account,forced:true}}catch{/* A normal session may still be valid. */}}
+  const token=cookies(request)[CHANGE];if(token){try{const p=await verifyPayload(token,'password-change');const account=(await registry()).accounts.find(a=>a.id===p.sub&&a.version===p.version&&!a.disabled&&a.mustChange);if(account)return {account,forced:true,remember:p.remember!==false}}catch{/* A normal session may still be valid. */}}
   const user=await deps.getUser(request);if(!user?.localAccess)throw new LoginError('Sign in with your username and password first.',401);
   const account=(await registry()).accounts.find(a=>`password:${a.id}`===user.userId&&!a.disabled&&!a.mustChange);if(!account)throw new LoginError('Please sign in again.',401);
-  return {account,forced:false};
+  return {account,forced:false,remember:(await verifyPayload(cookies(request)['__Host-rama_session']||'','session')).remember===true};
  }
  async function change(request:Request,ip:string){
-  const data=await input(request);await limit('change-ip/'+digest(ip),15);const {account,forced}=await changeIdentity(request);
+  const data=await input(request);await limit('change-ip/'+digest(ip),15);const {account,forced,remember}=await changeIdentity(request);
   if(!passwordValid(data.password))throw new LoginError('Use a password between 15 and 128 characters. A phrase of several words works well.');
   if(!forced&&(typeof data.currentPassword!=='string'||data.currentPassword.length>128||!await matchesPassword(data.currentPassword,account.hash)))throw new LoginError('Your current password is incorrect.',401);
   if(await matchesPassword(data.password,account.hash))throw new LoginError('Choose a different password from your current or temporary password.');
   const hash=await hashPassword(data.password),version=randomUUID();
   const accounts=await edit(list=>list.map(a=>{if(a.id!==account.id)return a;if(a.version!==account.version||a.disabled)throw new LoginError('Your account changed. Please sign in again.',409);return {...a,hash,version,mustChange:false,updated:new Date(now()).toISOString()}}));
-  const updated=accounts.find(a=>a.id===account.id)!;const headers=new Headers({'Content-Type':'application/json','Cache-Control':'no-store'});headers.append('Set-Cookie',await session(updated));headers.append('Set-Cookie',cookie(CHANGE,'',0));return new Response(JSON.stringify({ok:true,redirect:'/'}),{headers});
+  const updated=accounts.find(a=>a.id===account.id)!;const headers=new Headers({'Content-Type':'application/json','Cache-Control':'no-store'});headers.append('Set-Cookie',await session(updated,remember));headers.append('Set-Cookie',cookie(CHANGE,'',0));return new Response(JSON.stringify({ok:true,redirect:'/'}),{headers});
  }
  const safe=(a:PasswordAccount,state:Workspace)=>({id:a.id,username:accountUsername(a,state),target:a.target,mustChange:a.mustChange,disabled:a.disabled,created:a.created,updated:a.updated});
  async function manage(request:Request){
@@ -85,7 +85,7 @@ export function createPasswordAuth(deps:{store:PasswordStore;getUser:(request:Re
   if(path==='/api/admin/accounts'&&['GET','POST'].includes(request.method))return await manage(request);
   if(path==='/auth/password/login'&&request.method==='POST')return await login(request,ip);
   if(path==='/auth/password/change'&&request.method==='POST')return await change(request,ip);
-  if(path==='/auth/password/status'&&request.method==='GET'){const {account,forced}=await changeIdentity(request);return json({username:accountUsername(account,await deps.workspace()),mustChange:forced})}
+  if(path==='/auth/password/status'&&request.method==='GET'){const {account,forced,remember}=await changeIdentity(request);return json({username:accountUsername(account,await deps.workspace()),mustChange:forced})}
   return json({error:'Not found.'},404);
  }catch(error){return error instanceof LoginError?json({error:error.message},error.status):json({error:'Account sign-in is temporarily unavailable. Please try again.'},503)}};
 }

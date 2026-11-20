@@ -3,6 +3,7 @@ import {getStore} from '@netlify/blobs';
 import {cookies, cookie, signPayload, verifyPayload, sessionCookie, siteOrigin} from './auth';
 import {fellowName} from '../../lib/schedule';
 import {loadSnapshot} from './store';
+import type {PasswordStore} from './password-store';
 
 const TRANSACTION='__Host-rama_email_otp';
 const TTL=600;
@@ -29,7 +30,7 @@ export async function sendCode(email:string,code:string,id:string){
 class AuthError extends Error{constructor(message:string,public status=400){super(message)}}
 const invalid=()=>new AuthError('The code is incorrect, expired, or already used. Request a new code if needed.');
 const json=(value:unknown,status=200,headers:Record<string,string>={})=>Response.json(value,{status,headers:{'Cache-Control':'no-store',...headers}});
-export function createEmailAuth(deps:{store:AuthStore;lookup:typeof registeredIdentity;send:typeof sendCode;now?:()=>number;configured?:()=>boolean}){
+export function createEmailAuth(deps:{store:AuthStore;lookup:typeof registeredIdentity;send:typeof sendCode;now?:()=>number;configured?:()=>boolean;sessionStore?:PasswordStore}){
  const now=deps.now||Date.now;
  async function limit(key:string,max:number,windowMs:number,cooldown=0){
   for(let i=0;i<8;i++){
@@ -69,7 +70,7 @@ export function createEmailAuth(deps:{store:AuthStore;lookup:typeof registeredId
    const row=await deps.store.read(key);if(row?.data.id===id)await deps.store.write(key,{...row.data,used:true},row.etag);
    throw new AuthError('Unable to send a code right now. Please try again later or use Google.',503);
   }}
-  const token=await signPayload({email,id},'email-otp',TTL);
+  const token=await signPayload({email,id,remember:data.remember!==false},'email-otp',TTL);
   return json({ok:true,expiresIn:TTL,resendAfter:60,message:'If this email is registered with the program, a code will arrive shortly.'},200,{'Set-Cookie':cookie(TRANSACTION,token,TTL)});
  }
  async function verifyCode(request:Request,ip:string){
@@ -88,7 +89,7 @@ export function createEmailAuth(deps:{store:AuthStore;lookup:typeof registeredId
    // Membership may have been removed or the email changed after issuing the code.
    const identity=await deps.lookup(email);if(!identity)throw invalid();
    const headers=new Headers({'Cache-Control':'no-store','Content-Type':'application/json'});
-   headers.append('Set-Cookie',await sessionCookie({sub:`email:${email}`,email,name:identity.name,email_verified:true}));
+   headers.append('Set-Cookie',await sessionCookie({sub:`email:${email}`,email,name:identity.name,email_verified:true},transaction.remember!==false,deps.sessionStore));
    headers.append('Set-Cookie',cookie(TRANSACTION,'',0));
    return new Response(JSON.stringify({ok:true,redirect:'/'}),{headers});
   }
